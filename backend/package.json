@@ -1,0 +1,44 @@
+{
+  "name": "smartcol-backend",
+  "version": "1.0.0",
+  "description": "Backend API for SmartCol AI (Node.js + Express + PostgreSQL + Redis)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "migrate": "npx prisma migrate deploy || echo 'No Prisma migrations found'",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "express",
+    "backend",
+    "api",
+    "postgres",
+    "redis",
+    "smartcol-ai"
+  ],
+  "author": "SmartCol AI",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "helmet": "^7.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3",
+    "pg-hstore": "^2.3.4",
+    "redis": "^4.6.7",
+    "winston": "^3.10.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.51.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-node": "^11.1.0",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.0.3"
+  }
+}
