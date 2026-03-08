@@ -42,6 +42,17 @@ export const analyticsApi = {
   compute: () => apiClient.post('/analytics/compute'),
 };
 
+// Off-Day Recommendation API
+export const offdayApi = {
+  generate:   (userId?: string) => apiClient.post('/offday/generate', {}, userId ? { params: { userId } } : undefined),
+  getBalance: (userId?: string) => apiClient.get('/offday/balance', userId ? { params: { userId } } : undefined),
+  getPending: (userId?: string) => apiClient.get('/offday/pending', userId ? { params: { userId } } : undefined),
+  getAll:     (userId?: string) => apiClient.get('/offday/all',     userId ? { params: { userId } } : undefined),
+  getTeam:    ()               => apiClient.get('/offday/team'),
+  accept:     (id: string)     => apiClient.post(`/offday/${id}/accept`),
+  reject:     (id: string)     => apiClient.post(`/offday/${id}/reject`),
+};
+
 // Test data API (admin only — manages test users)
 export const testApi = {
   getTestUsers:      ()         => apiClient.get('/test/test-users'),

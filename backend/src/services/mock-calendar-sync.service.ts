@@ -529,13 +529,13 @@ function generateHeavyMockEvents(userId: string): Partial<CalendarEvent>[] {
 
   const dailySchedule = [
     // Back-to-back meetings 08:00–17:00
-    { subj: 'Daily Standup',            sh: 8,  sm: 0,  eh: 9,  em: 0  },
-    { subj: 'Sprint Review',            sh: 9,  sm: 0,  eh: 11, em: 0  },
-    { subj: 'Client Sync',             sh: 11, sm: 0,  eh: 12, em: 30 },
-    { subj: 'Architecture Review',      sh: 13, sm: 0,  eh: 15, em: 0  },
-    { subj: 'Cross-team Coordination',  sh: 15, sm: 0,  eh: 17, em: 0  },
-    // Overtime troubleshooting
-    { subj: 'Urgent Production Fix',    sh: 17, sm: 0,  eh: 19, em: 30 },
+    { subj: 'Daily Standup',            sh: 8,  sm: 0,  eh: 9,  em: 0  },  // 60
+    { subj: 'Sprint Review',            sh: 9,  sm: 0,  eh: 11, em: 0  },  // 120
+    { subj: 'Client Sync',             sh: 11, sm: 0,  eh: 12, em: 30 },  // 90
+    { subj: 'Architecture Review',      sh: 13, sm: 0,  eh: 15, em: 0  },  // 120
+    { subj: 'Cross-team Coordination',  sh: 15, sm: 0,  eh: 17, em: 0  },  // 120
+    // Overtime: 17:00–21:00 = 240 min → total 750 min (12.5h) ✓ qualifies for off-day
+    { subj: 'Urgent Production Fix',    sh: 17, sm: 0,  eh: 21, em: 0  },  // 240
   ];
 
   for (const weekOffset of [-2, -1, 0]) {
@@ -568,6 +568,30 @@ function generateHeavyMockEvents(userId: string): Partial<CalendarEvent>[] {
         });
       }
     }
+
+    // Weekend work: Saturday morning support shift → earns 1 off-day regardless of hours
+    idx++;
+    const sat = d(weekOffset, 5, 9, 0); // Saturday (day 5 from Monday)
+    events.push({
+      user_id: userId,
+      graph_event_id: `heavy-weekend-${userId}-w${weekOffset}`,
+      graph_calendar_id: 'mock-calendar-primary',
+      subject: 'Weekend On-Call Support',
+      body_preview: 'Saturday support coverage — qualifies for off-day compensation',
+      start_time: sat,
+      end_time: new Date(sat.getTime() + 3 * 60 * 60 * 1000), // 3h
+      is_all_day: false,
+      is_recurring: false,
+      recurrence_pattern: null,
+      location: null,
+      attendees: null,
+      organizer_email: 'ariff@company.com',
+      status: 'confirmed',
+      response_status: 'organizer',
+      is_cancelled: false,
+      raw_data: { source: 'heavy-mock', type: 'weekend-work' },
+      last_modified_at: new Date(),
+    });
 
     // Clustered deadlines: Monday + Wednesday each week (2 days apart → Overlapping Deadlines)
     for (const [dow, subj] of [[0, 'Phase Deadline'], [2, 'Release Deadline']] as const) {

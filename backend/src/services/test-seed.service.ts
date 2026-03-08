@@ -118,35 +118,37 @@ const OVERLOADED: EventTemplate[] = [
   { subject: 'Client Presentation',        dayOfWeek: 0, startHour: 11, startMin: 0,  durationMin: 90,  taskTypeId: 4 },
   { subject: 'Technical Architecture',     dayOfWeek: 0, startHour: 13, startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'Code Review Session',        dayOfWeek: 0, startHour: 15, startMin: 0,  durationMin: 120, taskTypeId: 4 },
-  { subject: 'Urgent Bug Fix',             dayOfWeek: 0, startHour: 17, startMin: 0,  durationMin: 150, taskTypeId: 2 },
+  { subject: 'Urgent Bug Fix',             dayOfWeek: 0, startHour: 17, startMin: 0,  durationMin: 240, taskTypeId: 2 },
   // Tuesday
   { subject: 'Daily Standup',              dayOfWeek: 1, startHour: 8,  startMin: 0,  durationMin: 60,  taskTypeId: 4 },
   { subject: 'Sprint Planning',            dayOfWeek: 1, startHour: 9,  startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'Stakeholder Update',         dayOfWeek: 1, startHour: 11, startMin: 0,  durationMin: 90,  taskTypeId: 4 },
   { subject: 'Infra Review',               dayOfWeek: 1, startHour: 13, startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'PR Review',                  dayOfWeek: 1, startHour: 15, startMin: 0,  durationMin: 120, taskTypeId: 4 },
-  { subject: 'Incident Response',          dayOfWeek: 1, startHour: 17, startMin: 0,  durationMin: 150, taskTypeId: 2 },
+  { subject: 'Incident Response',          dayOfWeek: 1, startHour: 17, startMin: 0,  durationMin: 240, taskTypeId: 2 },
   // Wednesday
   { subject: 'Daily Standup',              dayOfWeek: 2, startHour: 8,  startMin: 0,  durationMin: 60,  taskTypeId: 4 },
   { subject: 'Cross-team Sync',            dayOfWeek: 2, startHour: 9,  startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'Client Demo',                dayOfWeek: 2, startHour: 11, startMin: 0,  durationMin: 90,  taskTypeId: 3 },
   { subject: 'DB Migration Review',        dayOfWeek: 2, startHour: 13, startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'Security Audit',             dayOfWeek: 2, startHour: 15, startMin: 0,  durationMin: 120, taskTypeId: 4 },
-  { subject: 'Production Hotfix',          dayOfWeek: 2, startHour: 17, startMin: 0,  durationMin: 150, taskTypeId: 2 },
+  { subject: 'Production Hotfix',          dayOfWeek: 2, startHour: 17, startMin: 0,  durationMin: 240, taskTypeId: 2 },
   // Thursday
   { subject: 'Daily Standup',              dayOfWeek: 3, startHour: 8,  startMin: 0,  durationMin: 60,  taskTypeId: 4 },
   { subject: 'Release Planning',           dayOfWeek: 3, startHour: 9,  startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'QA Review Meeting',          dayOfWeek: 3, startHour: 11, startMin: 0,  durationMin: 90,  taskTypeId: 4 },
   { subject: 'Performance Review Prep',    dayOfWeek: 3, startHour: 13, startMin: 0,  durationMin: 120, taskTypeId: 6 },
   { subject: 'API Integration Review',     dayOfWeek: 3, startHour: 15, startMin: 0,  durationMin: 120, taskTypeId: 4 },
-  { subject: 'Emergency Deployment',       dayOfWeek: 3, startHour: 17, startMin: 0,  durationMin: 150, taskTypeId: 2 },
+  { subject: 'Emergency Deployment',       dayOfWeek: 3, startHour: 17, startMin: 0,  durationMin: 240, taskTypeId: 2 },
   // Friday
   { subject: 'Daily Standup',              dayOfWeek: 4, startHour: 8,  startMin: 0,  durationMin: 60,  taskTypeId: 4 },
   { subject: 'End-of-Sprint Review',       dayOfWeek: 4, startHour: 9,  startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'Vendor Call',                dayOfWeek: 4, startHour: 11, startMin: 0,  durationMin: 90,  taskTypeId: 4 },
   { subject: 'Lessons Learned',            dayOfWeek: 4, startHour: 13, startMin: 0,  durationMin: 120, taskTypeId: 4 },
   { subject: 'On-call Support',            dayOfWeek: 4, startHour: 15, startMin: 0,  durationMin: 120, taskTypeId: 2 },
-  { subject: 'Late Deployment',            dayOfWeek: 4, startHour: 17, startMin: 0,  durationMin: 150, taskTypeId: 2 },
+  { subject: 'Late Deployment',            dayOfWeek: 4, startHour: 17, startMin: 0,  durationMin: 240, taskTypeId: 2 },
+  // Saturday weekend work → automatic off-day entitlement
+  { subject: 'Weekend Emergency Support',  dayOfWeek: 5, startHour: 9,  startMin: 0,  durationMin: 180, taskTypeId: 2 },
 ];
 
 const MEETING_HEAVY: EventTemplate[] = [
@@ -472,9 +474,11 @@ function buildRandomEvents(archetype: Archetype): EventTemplate[] {
         hour += Math.ceil(dur / 60);
         if (hour >= 17) break;
       }
-      // Overtime troubleshooting
-      events.push({ subject: 'Urgent Issue — Overtime', dayOfWeek: dow, startHour: 17, startMin: 0, durationMin: rand(120, 180), taskTypeId: 2 });
+      // Extended overtime: 17:00–21:00 = 240 min → ensures total ≥ 720 min (12h) for off-day entitlement
+      events.push({ subject: 'Urgent Issue — Overtime', dayOfWeek: dow, startHour: 17, startMin: 0, durationMin: 240, taskTypeId: 2 });
     }
+    // Saturday weekend work → automatic off-day entitlement regardless of hours
+    events.push({ subject: 'Weekend Emergency Support', dayOfWeek: 5, startHour: 9, startMin: 0, durationMin: 180, taskTypeId: 2 });
     // Deadlines: Mon + Wed (overlapping)
     events.push({ subject: 'Phase Deadline', dayOfWeek: 0, startHour: 0, startMin: 0, durationMin: 0, taskTypeId: 1, isAllDay: true });
     events.push({ subject: 'Release Deadline', dayOfWeek: 2, startHour: 0, startMin: 0, durationMin: 0, taskTypeId: 1, isAllDay: true });
