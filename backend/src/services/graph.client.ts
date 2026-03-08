@@ -45,17 +45,19 @@ class GraphClient {
    * Get OAuth authorization URL
    */
   getAuthUrl(state: string): string {
+    const scopes = config.azure.scopes.join(' ');
     const params = new URLSearchParams({
       client_id: config.azure.clientId,
       response_type: 'code',
       redirect_uri: config.azure.redirectUri,
       response_mode: 'query',
-      scope: config.azure.scopes.join(' '),
+      scope: scopes,
       state,
+      prompt: 'select_account', // Force account selection
     });
 
     const url = `${this.authUrl}/authorize?${params.toString()}`;
-    logger.debug('Generated OAuth URL', { state });
+    logger.debug('Generated OAuth URL', { state, scopes });
 
     return url;
   }
@@ -87,6 +89,7 @@ class GraphClient {
 
       logger.info('Successfully exchanged code for tokens', {
         expiresIn: response.data.expires_in,
+        scope: response.data.scope,
       });
 
       return response.data;
@@ -190,7 +193,7 @@ class GraphClient {
         logger.info('Fetching calendar events using delta link');
       } else {
         // Initial sync or full sync with filters
-        url = '/me/calendar/events/delta';
+        url = '/me/events/delta';
         const params = new URLSearchParams({
           $top: top.toString(),
         });
@@ -207,12 +210,20 @@ class GraphClient {
         });
       }
 
-      const response = await axios.get(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Prefer: 'odata.maxpagesize=100',
-        },
-      });
+      // Use axios directly for full URLs (delta links), httpClient for relative paths
+      const response = deltaLink
+        ? await axios.get(url, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Prefer: 'odata.maxpagesize=100',
+            },
+          })
+        : await this.httpClient.get(url, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Prefer: 'odata.maxpagesize=100',
+            },
+          });
 
       const events = response.data.value as GraphEvent[];
       const newDeltaLink = response.data['@odata.deltaLink'] as string | undefined;

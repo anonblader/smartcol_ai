@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import { logger } from './config/monitoring.config';
 import authRoutes from './routes/auth.routes';
+import syncRoutes from './routes/sync.routes';
 import calendarRoutes from './routes/calendar.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import risksRoutes from './routes/risks.routes';
@@ -32,8 +33,9 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// API routes (these match your frontend api.ts expectations) :contentReference[oaicite:8]{index=8}
+// API routes (these match your frontend api.ts expectations)
 app.use('/api/auth', authRoutes);
+app.use('/api/sync', syncRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/risks', risksRoutes);

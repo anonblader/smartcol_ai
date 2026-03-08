@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Calendar Sync - SmartCol AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        button {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #106ebe;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 18px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .status.success {
+            background: #dff6dd;
+            border-left: 4px solid #28a745;
+        }
+        .status.error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+        .status.info {
+            background: #d1ecf1;
+            border-left: 4px solid #0c5460;
+        }
+        .event-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .event-card {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #0078d4;
+            border-radius: 4px;
+        }
+        .event-subject {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .event-time {
+            color: #666;
+            font-size: 13px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #0078d4;
+        }
+        .stat-label {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗓️ Calendar Sync Test</h1>
+        <p class="subtitle">Test Microsoft Graph calendar synchronization</p>
+
+        <div class="section">
+            <h2>1. Trigger Sync</h2>
+            <button onclick="syncCalendar()">🔄 Sync Calendar (Real)</button>
+            <button onclick="fullSync()">🔄 Full Sync (ignore delta)</button>
+            <button onclick="syncMockCalendar()" style="background: #28a745;">🎭 Mock Sync (Demo Data)</button>
+            <div id="syncStatus"></div>
+            <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; font-size: 13px;">
+                <strong>💡 Tip:</strong> Use "Mock Sync" if you're getting 401 errors due to Microsoft tenant restrictions. This generates realistic sample calendar events for demonstration purposes.
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>2. Sync Status</h2>
+            <button onclick="getSyncStatus()">📊 Get Sync Status</button>
+            <div id="statusDisplay"></div>
+        </div>
+
+        <div class="section">
+            <h2>3. Calendar Events</h2>
+            <button onclick="getEvents()">📅 Get Events</button>
+            <button onclick="getUpcomingEvents()">⏰ Get Upcoming Events</button>
+            <div id="eventsDisplay"></div>
+        </div>
+    </div>
+
+    <script>
+        async function syncCalendar(fullSync = false) {
+            const statusDiv = document.getElementById('syncStatus');
+            statusDiv.innerHTML = '<div class="status info">Syncing calendar...</div>';
+
+            try {
+                const response = await fetch('/api/sync/calendar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        fullSync
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            <strong>✅ Sync Completed Successfully</strong>
+                            <div style="margin-top: 10px;">
+                                <div>Events Added: ${data.stats.eventsAdded}</div>
+                                <div>Events Updated: ${data.stats.eventsUpdated}</div>
+                                <div>Events Deleted: ${data.stats.eventsDeleted}</div>
+                                <div>Total Processed: ${data.stats.totalProcessed}</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="status error">
+                            <strong>❌ Sync Failed</strong>
+                            <div>${data.message || 'Unknown error'}</div>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>❌ Error</strong>
+                        <div>${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        function fullSync() {
+            syncCalendar(true);
+        }
+
+        async function syncMockCalendar() {
+            const statusDiv = document.getElementById('syncStatus');
+            statusDiv.innerHTML = '<div class="status info">Syncing mock calendar data...</div>';
+
+            try {
+                const response = await fetch('/api/sync/mock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            <strong>✅ Mock Sync Completed Successfully</strong>
+                            <div style="margin-top: 10px;">
+                                <div>Events Added: ${data.stats.eventsAdded}</div>
+                                <div>Events Updated: ${data.stats.eventsUpdated}</div>
+                                <div>Events Deleted: ${data.stats.eventsDeleted}</div>
+                                <div>Total Processed: ${data.stats.totalProcessed}</div>
+                            </div>
+                            <div style="margin-top: 10px; padding: 10px; background: #d1ecf1; border-radius: 4px;">
+                                <strong>📝 Note:</strong> ${data.note}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="status error">
+                            <strong>❌ Mock Sync Failed</strong>
+                            <div>${data.message || 'Unknown error'}</div>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>❌ Error</strong>
+                        <div>${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        async function getSyncStatus() {
+            const statusDiv = document.getElementById('statusDisplay');
+            statusDiv.innerHTML = '<div class="status info">Loading sync status...</div>';
+
+            try {
+                const response = await fetch('/api/sync/status', {
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                const lastSyncTime = data.lastSync ? new Date(data.lastSync.startedAt).toLocaleString() : 'Never';
+                const lastSyncStatus = data.lastSync?.status || 'N/A';
+
+                statusDiv.innerHTML = `
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-value">${data.stats.totalEvents}</div>
+                            <div class="stat-label">Total Events</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.stats.upcomingEvents}</div>
+                            <div class="stat-label">Upcoming Events</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.stats.pastEvents}</div>
+                            <div class="stat-label">Past Events</div>
+                        </div>
+                    </div>
+
+                    <div class="status info">
+                        <strong>Last Sync:</strong> ${lastSyncTime}<br>
+                        <strong>Status:</strong> ${lastSyncStatus}
+                        ${data.lastSync ? `
+                            <div style="margin-top: 10px;">
+                                <div>Events Fetched: ${data.lastSync.eventsFetched}</div>
+                                <div>Events Created: ${data.lastSync.eventsCreated}</div>
+                                <div>Events Updated: ${data.lastSync.eventsUpdated}</div>
+                                <div>Events Deleted: ${data.lastSync.eventsDeleted}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    ${data.recentSyncs.length > 0 ? `
+                        <h3>Recent Syncs</h3>
+                        ${data.recentSyncs.map(sync => `
+                            <div class="status ${sync.status === 'success' ? 'success' : 'error'}">
+                                <strong>${new Date(sync.startedAt).toLocaleString()}</strong> - ${sync.status}
+                                <div>Fetched: ${sync.eventsFetched}, Created: ${sync.eventsCreated}, Updated: ${sync.eventsUpdated}</div>
+                                ${sync.error ? `<div>Error: ${sync.error}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    ` : ''}
+                `;
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>❌ Error</strong>
+                        <div>${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        async function getEvents(upcoming = false) {
+            const eventsDiv = document.getElementById('eventsDisplay');
+            eventsDiv.innerHTML = '<div class="status info">Loading events...</div>';
+
+            try {
+                const params = new URLSearchParams({
+                    limit: '50'
+                });
+
+                if (upcoming) {
+                    params.append('startDate', new Date().toISOString());
+                }
+
+                const response = await fetch(`/api/sync/events?${params}`, {
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.events.length === 0) {
+                    eventsDiv.innerHTML = '<div class="status info">No events found</div>';
+                    return;
+                }
+
+                eventsDiv.innerHTML = `
+                    <div class="status success">
+                        <strong>Found ${data.events.length} events</strong>
+                        ${data.pagination.hasMore ? ` (showing first ${data.pagination.limit})` : ''}
+                    </div>
+                    <div class="event-list">
+                        ${data.events.map(event => `
+                            <div class="event-card">
+                                <div class="event-subject">${event.subject || '(No Subject)'}</div>
+                                <div class="event-time">
+                                    📅 ${new Date(event.start_time).toLocaleString()} - ${new Date(event.end_time).toLocaleString()}
+                                </div>
+                                ${event.location ? `<div style="margin-top: 5px;">📍 ${event.location}</div>` : ''}
+                                ${event.is_all_day ? '<div style="margin-top: 5px;">⏰ All Day Event</div>' : ''}
+                                ${event.is_recurring ? '<div style="margin-top: 5px;">🔄 Recurring Event</div>' : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (error) {
+                eventsDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>❌ Error</strong>
+                        <div>${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        function getUpcomingEvents() {
+            getEvents(true);
+        }
+
+        // Check auth status on load
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('/api/auth/status', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+
+                if (!data.authenticated) {
+                    document.body.innerHTML = `
+                        <div class="container">
+                            <h1>⚠️ Not Authenticated</h1>
+                            <p>You need to authenticate first before testing calendar sync.</p>
+                            <a href="/test-auth.html"><button>Go to Authentication Test</button></a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+            }
+        });
+    </script>
+</body>
+</html>
