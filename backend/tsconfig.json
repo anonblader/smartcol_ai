@@ -1,0 +1,94 @@
+{
+  "compilerOptions": {
+    /* Language and Environment */
+    "target": "ES2022",                          // Modern JavaScript features
+    "lib": ["ES2022"],                           // Standard library
+    "experimentalDecorators": true,              // For class decorators if needed
+    "emitDecoratorMetadata": true,               // Metadata for decorators
+
+    /* Modules */
+    "module": "commonjs",                        // Node.js uses CommonJS
+    "moduleResolution": "node",                  // Node.js module resolution
+    "resolveJsonModule": true,                   // Import JSON files
+    "esModuleInterop": true,                     // Better CommonJS/ESM interop
+    "allowSyntheticDefaultImports": true,        // Allow default imports from modules
+
+    /* Emit */
+    "outDir": "./dist",                          // Output directory
+    "rootDir": "./src",                          // Source root
+    "removeComments": true,                      // Strip comments from output
+    "sourceMap": true,                           // Generate .map files for debugging
+    "declaration": true,                         // Generate .d.ts files
+    "declarationMap": true,                      // Source maps for declarations
+
+    /* Type Checking */
+    "strict": true,                              // Enable all strict type-checking options
+    "noImplicitAny": true,                       // Error on expressions with implied 'any'
+    "strictNullChecks": true,                    // Strict null checking
+    "strictFunctionTypes": true,                 // Strict function type checking
+    "strictBindCallApply": true,                 // Strict bind/call/apply
+    "strictPropertyInitialization": true,        // Class properties must be initialized
+    "noImplicitThis": true,                      // Error on 'this' with implied 'any'
+    "alwaysStrict": true,                        // Parse in strict mode
+
+    /* Additional Checks */
+    "noUnusedLocals": true,                      // Report unused local variables
+    "noUnusedParameters": true,                  // Report unused parameters
+    "noImplicitReturns": true,                   // Report missing return statements
+    "noFallthroughCasesInSwitch": true,          // Report fallthrough cases in switch
+    "noUncheckedIndexedAccess": true,            // Strict indexed access checking
+    "noImplicitOverride": true,                  // Ensure override keyword usage
+    "noPropertyAccessFromIndexSignature": false, // Allow property access from index signatures
+
+    /* Interop Constraints */
+    "isolatedModules": true,                     // Ensure each file can be safely transpiled
+    "allowJs": false,                            // Don't allow JavaScript files
+    "checkJs": false,                            // Don't check JavaScript files
+    "forceConsistentCasingInFileNames": true,    // Enforce consistent file name casing
+
+    /* Advanced */
+    "skipLibCheck": true,                        // Skip type checking of declaration files
+    "allowUnreachableCode": false,               // Report unreachable code
+    "allowUnusedLabels": false,                  // Report unused labels
+
+    /* Path Mapping */
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["src/*"],
+      "@config/*": ["src/config/*"],
+      "@controllers/*": ["src/controllers/*"],
+      "@services/*": ["src/services/*"],
+      "@middleware/*": ["src/middleware/*"],
+      "@routes/*": ["src/routes/*"],
+      "@types/*": ["src/types/*"],
+      "@utils/*": ["src/utils/*"]
+    },
+
+    /* Type Roots */
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types"
+    ],
+
+    /* Output Configuration */
+    "incremental": true,                         // Enable incremental compilation
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"     // Build info file location
+  },
+
+  /* Include/Exclude */
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ],
+
+  /* Type Acquisition */
+  "typeAcquisition": {
+    "enable": true,
+    "include": ["node"]
+  }
+}

@@ -2,13 +2,24 @@
   "name": "smartcol-backend",
   "version": "1.0.0",
   "description": "Backend API for SmartCol AI (Node.js + Express + PostgreSQL + Redis)",
-  "main": "src/server.js",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "migrate": "npx prisma migrate deploy || echo 'No Prisma migrations found'",
-    "lint": "eslint .",
-    "format": "prettier --write ."
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "start": "node dist/server.js",
+    "start:prod": "NODE_ENV=production node dist/server.js",
+    "dev": "nodemon --exec ts-node src/server.ts",
+    "dev:build": "nodemon --exec \"npm run build && node dist/server.js\"",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit",
+    "db:migrate": "node ../database/run-migration.js --all",
+    "db:migrate:init": "node ../database/run-migration.js migrations/001_initial_schema.sql",
+    "db:check": "node ../database/run-migration.js --check",
+    "db:list": "node ../database/run-migration.js --list",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "keywords": [
     "express",
@@ -35,10 +46,21 @@
     "winston": "^3.10.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/express-session": "^1.17.10",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.0",
+    "@types/pg": "^8.10.9",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.51.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-node": "^11.1.0",
     "nodemon": "^3.0.1",
-    "prettier": "^3.0.3"
+    "prettier": "^3.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   }
 }

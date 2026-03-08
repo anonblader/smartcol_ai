@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartCol AI - OAuth Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .status.show {
+            display: block;
+        }
+        .status.loading {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .info {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+        .info h3 {
+            margin-top: 0;
+            color: #374151;
+        }
+        .info code {
+            background: #e5e7eb;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .user-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0fdf4;
+            border-radius: 6px;
+            border-left: 4px solid #10b981;
+        }
+        .user-info h3 {
+            margin-top: 0;
+            color: #065f46;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 SmartCol AI - OAuth Test</h1>
+        <p class="subtitle">Test Microsoft OAuth 2.0 authentication flow</p>
+
+        <button id="loginBtn" onclick="startOAuth()">
+            Sign in with Microsoft
+        </button>
+
+        <div id="status" class="status"></div>
+
+        <div class="info">
+            <h3>📋 What This Does:</h3>
+            <ol>
+                <li>Requests OAuth URL from backend (<code>/api/auth/connect</code>)</li>
+                <li>Redirects you to Microsoft login</li>
+                <li>After login, Microsoft redirects back to <code>/api/auth/callback</code></li>
+                <li>Backend stores your user and tokens in database</li>
+            </ol>
+        </div>
+
+        <div id="userInfo" style="display: none;"></div>
+    </div>
+
+    <script>
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status show ' + type;
+        }
+
+        async function startOAuth() {
+            const btn = document.getElementById('loginBtn');
+            btn.disabled = true;
+            showStatus('Requesting OAuth URL from backend...', 'loading');
+
+            try {
+                const response = await fetch('/api/auth/connect', {
+                    credentials: 'include' // Important: include cookies for session
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to get OAuth URL');
+                }
+
+                const data = await response.json();
+
+                showStatus('Redirecting to Microsoft login...', 'loading');
+
+                // Redirect to Microsoft login
+                window.location.href = data.authUrl;
+
+            } catch (error) {
+                showStatus('Error: ' + error.message, 'error');
+                btn.disabled = false;
+            }
+        }
+
+        // Check if we just came back from OAuth callback
+        window.onload = async function() {
+            // Check auth status
+            try {
+                const response = await fetch('/api/auth/status', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+
+                if (data.authenticated) {
+                    showStatus('✅ You are logged in!', 'success');
+
+                    const userInfoDiv = document.getElementById('userInfo');
+                    userInfoDiv.style.display = 'block';
+                    userInfoDiv.className = 'user-info';
+                    userInfoDiv.innerHTML = `
+                        <h3>✅ Authentication Successful!</h3>
+                        <p><strong>Email:</strong> ${data.user.email}</p>
+                        <p><strong>Display Name:</strong> ${data.user.displayName}</p>
+                        <p><strong>Timezone:</strong> ${data.user.timezone}</p>
+                        <p><strong>User ID:</strong> ${data.user.id}</p>
+                        ${data.lastSync ? `<p><strong>Last Sync:</strong> ${new Date(data.lastSync).toLocaleString()}</p>` : ''}
+                    `;
+
+                    document.getElementById('loginBtn').textContent = 'Sign Out';
+                    document.getElementById('loginBtn').onclick = signOut;
+                    document.getElementById('loginBtn').disabled = false;
+                }
+            } catch (error) {
+                console.error('Error checking auth status:', error);
+            }
+        };
+
+        async function signOut() {
+            if (!confirm('Are you sure you want to sign out?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/auth/disconnect', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    location.reload();
+                }
+            } catch (error) {
+                showStatus('Error signing out: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

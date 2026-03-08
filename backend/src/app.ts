@@ -1,6 +1,7 @@
 import express from 'express';
 import session from 'express-session';
 import cors from 'cors';
+import path from 'path';
 import { logger } from './config/monitoring.config';
 import authRoutes from './routes/auth.routes';
 import calendarRoutes from './routes/calendar.routes';
@@ -16,6 +17,9 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, '../public')));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret',
