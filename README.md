@@ -435,29 +435,6 @@ Priority Score =
 
 ---
 
-## 💰 Cost Estimation
-
-### Monthly Azure Costs (USD)
-
-| Service | Configuration | Estimated Cost |
-|---------|--------------|----------------|
-| App Service (P1V2) | 2 instances | $140 |
-| PostgreSQL (Standard_B2s) | Flexible Server | $50 |
-| Redis (Standard C1) | 1GB cache | $75 |
-| Key Vault | Secrets + operations | $5 |
-| Application Insights | Standard tier | $20 |
-| Static Web App | Standard tier | $10 |
-| Bandwidth | ~100GB/month | $10 |
-| **Total** | | **~$310/month** |
-
-**Cost Optimization:**
-- Use burstable database tier for dev/test (-40%)
-- Reserved instances for production (-40%)
-- Auto-scaling to reduce idle capacity
-- CDN caching to reduce bandwidth
-
----
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -505,7 +482,7 @@ npm run dev:all
 
 ### Production Deployment
 
-See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for complete Azure deployment instructions.
+See [DEPLOYMENT_GUIDE] for complete Azure deployment instructions.
 
 ---
 
