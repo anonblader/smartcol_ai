@@ -94,6 +94,14 @@
     </style>
 </head>
 <body>
+    <nav style="background:#1e293b;padding:12px 24px;display:flex;align-items:center;gap:8px;">
+      <span style="color:#94a3b8;font-size:13px;margin-right:8px;">SmartCol AI</span>
+      <a href="/test-auth.html" style="background:#3b82f6;color:#fff;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;">🔐 Auth</a>
+      <a href="/test-sync.html" style="color:#cbd5e1;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;">🗓️ Sync</a>
+      <a href="/test-analytics.html" style="color:#cbd5e1;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;">📊 Analytics</a>
+      <a href="/test-multiuser.html" style="color:#cbd5e1;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;">👥 Multi-User</a>
+      <a href="http://localhost:3000" target="_blank" style="color:#93c5fd;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;margin-left:auto;border:1px solid #334155;">🌐 Open Frontend</a>
+</nav>
     <div class="container">
         <h1>🔐 SmartCol AI - OAuth Test</h1>
         <p class="subtitle">Test Microsoft OAuth 2.0 authentication flow</p>
@@ -159,6 +167,12 @@
                     credentials: 'include'
                 });
                 const data = await response.json();
+
+                // Non-admin users should not access backend pages
+                if (data.authenticated && !data.isAdmin) {
+                    window.location.href = 'http://localhost:3000';
+                    return;
+                }
 
                 if (data.authenticated) {
                     showStatus('✅ You are logged in!', 'success');

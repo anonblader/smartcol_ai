@@ -1,18 +1,24 @@
 /**
- * Risks & Overtime Routes
- *
- * TODO: Implement risk detection and overtime tracking endpoints
+ * Risks Routes
  */
 
 import { Router } from 'express';
+import {
+  runDetection,
+  getAlerts,
+  getOngoingAlerts,
+  getAlertHistory,
+  acknowledgeRisk,
+  dismissRisk,
+} from '../controllers/risks.controller';
 
 const router = Router();
 
-// TODO: Implement routes
-// GET /api/risks/active
-// POST /api/risks/:id/acknowledge
-// GET /api/overtime/weekly
-// GET /api/overtime/trends
-// GET /api/overtime/recommendations
+router.post('/detect', runDetection);
+router.get('/active', getAlerts);
+router.get('/ongoing', getOngoingAlerts);       // acknowledged alerts
+router.get('/history', getAlertHistory);
+router.post('/:id/acknowledge', acknowledgeRisk);
+router.post('/:id/dismiss', dismissRisk);       // force-close (replaces resolve)
 
 export default router;

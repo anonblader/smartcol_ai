@@ -8,6 +8,9 @@ import syncRoutes from './routes/sync.routes';
 import calendarRoutes from './routes/calendar.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import risksRoutes from './routes/risks.routes';
+import testRoutes from './routes/test.routes';
+import adminRoutes from './routes/admin.routes';
+import { requireAdmin } from './middleware/admin.middleware';
 
 const app = express();
 
@@ -39,6 +42,8 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/risks', risksRoutes);
+app.use('/api/admin', requireAdmin, adminRoutes);
+app.use('/api/test',  requireAdmin, testRoutes);
 
 // Error logging
 app.use((err: any, _req: any, res: any, _next: any) => {

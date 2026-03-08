@@ -65,7 +65,7 @@ export const TimeBreakdownChart: React.FC<Props> = ({ data }) => {
         <Bar
           dataKey="hours"
           fill="#3498DB"
-          label={{ position: 'right', formatter: (value) => `${value}h` }}
+          label={{ position: 'right', formatter: (value: number) => `${value}h` }}
         />
       </BarChart>
     </ResponsiveContainer>

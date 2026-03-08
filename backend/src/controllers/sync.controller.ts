@@ -6,7 +6,10 @@
 
 import { Request, Response } from 'express';
 import { syncCalendarEvents, syncAllUsers } from '../services/calendar-sync.service';
-import { syncMockCalendarEvents } from '../services/mock-calendar-sync.service';
+import { syncMockCalendarEvents, syncLightMockEvents, syncHeavyMockEvents } from '../services/mock-calendar-sync.service';
+import { classifyUserEvents } from '../services/event-classification.service';
+import { computeWorkload } from '../services/analytics.service';
+import { detectRisks } from '../services/risks.service';
 import { db } from '../services/database.client';
 import { logger } from '../config/monitoring.config';
 import { SyncHistory } from '../types';
@@ -306,6 +309,11 @@ export async function syncMockCalendar(req: Request, res: Response): Promise<voi
     const result = await syncMockCalendarEvents(userId);
 
     if (result.success) {
+      // Auto-classify → compute workload → detect risks
+      const classification = await classifyUserEvents(userId);
+      const workload = await computeWorkload(userId);
+      const risks = await detectRisks(userId);
+
       res.json({
         success: true,
         message: 'Mock calendar sync completed successfully',
@@ -314,6 +322,22 @@ export async function syncMockCalendar(req: Request, res: Response): Promise<voi
           eventsUpdated: result.eventsUpdated,
           eventsDeleted: result.eventsDeleted,
           totalProcessed: result.totalProcessed,
+        },
+        classification: {
+          classified: classification.classified,
+          failed: classification.failed,
+          error: classification.error,
+        },
+        workload: {
+          daysProcessed: workload.daysProcessed,
+          weeksProcessed: workload.weeksProcessed,
+          error: workload.error,
+        },
+        risks: {
+          alertsCreated: risks.alertsCreated,
+          alertsUpdated: risks.alertsUpdated,
+          risksDetected: risks.risksDetected,
+          error: risks.error,
         },
         note: 'This was a mock sync with sample data for demonstration purposes',
       });
@@ -338,5 +362,150 @@ export async function syncMockCalendar(req: Request, res: Response): Promise<voi
       error: 'InternalServerError',
       message: 'Failed to sync mock calendar',
     });
+  }
+}
+
+/**
+ * POST /api/sync/light-mock
+ * Sync a minimal underloaded schedule (~90 min/week, no focus time)
+ */
+export async function syncLightMockCalendar(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.session.user_id;
+    if (!userId) { res.status(401).json({ error: 'Unauthorized', message: 'No active session' }); return; }
+
+    const result = await syncLightMockEvents(userId);
+    if (result.success) {
+      const classification = await classifyUserEvents(userId);
+      const workload = await computeWorkload(userId);
+      const risks = await detectRisks(userId);
+      res.json({
+        success: true,
+        message: 'Light mock sync completed — minimal workload schedule applied',
+        stats: { eventsAdded: result.eventsAdded, eventsUpdated: result.eventsUpdated, totalProcessed: result.totalProcessed },
+        classification: { classified: classification.classified },
+        workload: { daysProcessed: workload.daysProcessed },
+        risks: { risksDetected: risks.risksDetected },
+        note: 'Underloaded schedule: minimal meetings, no focus time — triggers Low Focus Time risk',
+      });
+    } else {
+      res.status(500).json({ error: 'SyncFailed', message: result.error });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'InternalServerError', message: 'Failed to run light mock sync' });
+  }
+}
+
+/**
+ * POST /api/sync/heavy-mock
+ * Sync an overloaded mock schedule (back-to-back meetings, overtime, deadlines)
+ */
+export async function syncHeavyMockCalendar(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.session.user_id;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized', message: 'No active session' });
+      return;
+    }
+
+    logger.info('Heavy mock calendar sync requested', { userId });
+    const result = await syncHeavyMockEvents(userId);
+
+    if (result.success) {
+      const classification = await classifyUserEvents(userId);
+      const workload = await computeWorkload(userId);
+      const risks = await detectRisks(userId);
+
+      res.json({
+        success: true,
+        message: 'Heavy mock sync completed — overloaded schedule applied',
+        stats: {
+          eventsAdded: result.eventsAdded,
+          eventsUpdated: result.eventsUpdated,
+          eventsDeleted: result.eventsDeleted,
+          totalProcessed: result.totalProcessed,
+        },
+        classification: { classified: classification.classified, failed: classification.failed },
+        workload: { daysProcessed: workload.daysProcessed, weeksProcessed: workload.weeksProcessed },
+        risks: { alertsCreated: risks.alertsCreated, risksDetected: risks.risksDetected },
+        note: 'Overloaded schedule: back-to-back meetings + overtime + clustered deadlines across 3 weeks',
+      });
+    } else {
+      res.status(500).json({ error: 'SyncFailed', message: result.error });
+    }
+  } catch (error) {
+    logger.error('Heavy mock sync endpoint failed', { error });
+    res.status(500).json({ error: 'InternalServerError', message: 'Failed to run heavy mock sync' });
+  }
+}
+
+/**
+ * DELETE /api/sync/clear-data
+ * Wipe all calendar data for the session user so a fresh mock sync starts clean.
+ * Clears: calendar_events (cascades to classifications), daily_workload,
+ *         weekly_workload, risk_alerts, sync_history.
+ */
+export async function clearUserData(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.session.user_id;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized', message: 'No active session' });
+      return;
+    }
+
+    logger.info('Clearing user data for fresh mock sync', { userId });
+
+    // Order matters — calendar_events cascades to event_classifications
+    await db.query('DELETE FROM risk_alerts       WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM daily_workload     WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM weekly_workload    WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM calendar_events    WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM sync_history       WHERE user_id = $1', [userId]);
+
+    logger.info('User data cleared', { userId });
+    res.json({ success: true, message: 'All calendar data cleared' });
+  } catch (error) {
+    logger.error('Clear data failed', { error });
+    res.status(500).json({ error: 'InternalServerError', message: 'Failed to clear data' });
+  }
+}
+
+/**
+ * POST /api/sync/classify
+ * Manually trigger classification for all unclassified events
+ */
+export async function classifyEvents(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.session.user_id;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized', message: 'No active session' });
+      return;
+    }
+
+    logger.info('Manual classification requested', { userId });
+    const result = await classifyUserEvents(userId);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Classification completed',
+        stats: {
+          classified: result.classified,
+          skipped: result.skipped,
+          failed: result.failed,
+        },
+      });
+    } else {
+      res.status(500).json({
+        error: 'ClassificationFailed',
+        message: result.error || 'Classification failed',
+      });
+    }
+  } catch (error) {
+    logger.error('Classify endpoint failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    res.status(500).json({ error: 'InternalServerError', message: 'Failed to classify events' });
   }
 }

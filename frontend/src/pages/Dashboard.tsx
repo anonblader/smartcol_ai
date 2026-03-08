@@ -1,106 +1,329 @@
-// src/pages/Dashboard.tsx
-import React, { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { Grid, Paper, Typography } from '@mui/material';
-import { TimeBreakdownChart } from '../components/dashboard/TimeBreakdownChart';
-import { ProjectPieChart } from '../components/dashboard/ProjectPieChart';
-import { WorkloadHeatmap } from '../components/dashboard/WorkloadHeatmap';
-import { TrendsChart } from '../components/dashboard/TrendsChart';
-import { MetricsCards } from '../components/analytics/MetricsCards';
-import { RiskAlertList } from '../components/risks/RiskAlertList';
-import { fetchWeeklySummary, fetchHeatmap, fetchTrends } from '../store/slices/analyticsSlice';
-import { fetchActiveRisks } from '../store/slices/risksSlice';
+import React from 'react';
+import {
+  Box, Grid, Paper, Typography, CircularProgress, Alert,
+  Chip, Button, Divider,
+} from '@mui/material';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import EventIcon from '@mui/icons-material/Event';
+import VideocamIcon from '@mui/icons-material/Videocam';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import GroupIcon from '@mui/icons-material/Group';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell,
+} from 'recharts';
+import { useAnalytics } from '../hooks/useAnalytics';
+import { useRisks, RiskAlert } from '../hooks/useRisks';
+import { useTeamOverview, TeamMember } from '../hooks/useAdmin';
+import { useAuth } from '../hooks/useAuth';
+import { format, parseISO } from 'date-fns';
 
-export const Dashboard: React.FC = () => {
-  const dispatch = useDispatch();
-  const { weeklySummary, heatmap, trends, loading } = useSelector(state => state.analytics);
-  const { activeRisks } = useSelector(state => state.risks);
+const PRIMARY = '#2563eb';
+const BREAKDOWN_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#06b6d4', '#ec4899'];
+const SEVERITY_COLORS: Record<string, string> = {
+  low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#7c3aed',
+};
 
-  useEffect(() => {
-    // Fetch dashboard data
-    const today = new Date();
-    const weekStart = getStartOfWeek(today);
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-    dispatch(fetchWeeklySummary({ weekStartDate: weekStart }));
-    dispatch(fetchHeatmap({
-      startDate: subDays(today, 28),
-      endDate: today
-    }));
-    dispatch(fetchTrends({
-      startDate: subMonths(today, 6),
-      endDate: today,
-      granularity: 'week'
-    }));
-    dispatch(fetchActiveRisks());
-  }, [dispatch]);
+function mins2h(m: number) { return (Number(m) / 60).toFixed(1); }
 
-  if (loading) {
-    return <Loading />;
-  }
+function fmtTime(s: string) {
+  try { return format(parseISO(s), 'EEE MMM d, h:mm a'); } catch { return s; }
+}
+
+// ── Shared stat card ─────────────────────────────────────────────────────────
+
+function StatCard({ title, value, unit, icon, color = PRIMARY }: {
+  title: string; value: string | number; unit?: string; icon: React.ReactNode; color?: string;
+}) {
+  return (
+    <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ width: 48, height: 48, borderRadius: 2, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color }}>
+        {icon}
+      </Box>
+      <Box>
+        <Typography variant="h5" fontWeight={700}>
+          {value}
+          {unit && <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>{unit}</Typography>}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">{title}</Typography>
+      </Box>
+    </Paper>
+  );
+}
+
+// ── Alert card (personal) ────────────────────────────────────────────────────
+
+function AlertCard({ alert, onAcknowledge, onDismiss }: {
+  alert: RiskAlert; onAcknowledge: (id: string) => void; onDismiss: (id: string) => void;
+}) {
+  const color = SEVERITY_COLORS[alert.severity] || '#6b7280';
+  return (
+    <Paper sx={{ p: 2.5, borderRadius: 2, border: `1px solid ${color}30`, borderLeft: `4px solid ${color}`, mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Chip label={alert.severity.toUpperCase()} size="small" sx={{ background: color, color: '#fff', fontWeight: 700, fontSize: 10, height: 20 }} />
+          {alert.score !== undefined && <Typography variant="caption" color="text.secondary">Score: {alert.score}</Typography>}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button size="small" variant="outlined" onClick={() => onAcknowledge(alert.id)} sx={{ fontSize: 12, py: 0.3 }}>Acknowledge</Button>
+          <Button size="small" variant="outlined" color="error" onClick={() => onDismiss(alert.id)} sx={{ fontSize: 12, py: 0.3 }}>Dismiss</Button>
+        </Box>
+      </Box>
+      <Typography variant="subtitle2" fontWeight={600}>{alert.title}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{alert.description}</Typography>
+      {alert.recommendation && <Typography variant="body2" color={PRIMARY} sx={{ mt: 0.5, fontStyle: 'italic' }}>{alert.recommendation}</Typography>}
+    </Paper>
+  );
+}
+
+// ── Team member card (admin only) ────────────────────────────────────────────
+
+function MemberCard({ member }: { member: TeamMember }) {
+  const activeRisks = Number(member.active_risks);
+  const overtime    = Number(member.total_overtime_minutes);
+  const workHrs     = parseFloat(mins2h(member.total_work_minutes));
+  const initials    = member.display_name.split(' ').map(n => n[0]).join('').slice(0, 2);
+
+  // Infer load level
+  const peakHrs = Number(member.peak_daily_minutes) / 60;
+  const loadColor = peakHrs > 10 ? '#ef4444' : peakHrs > 8 ? '#f59e0b' : workHrs < 5 ? '#3b82f6' : '#10b981';
+  const loadLabel = peakHrs > 10 ? 'Overloaded' : peakHrs > 8 ? 'High Load' : workHrs < 5 ? 'Underloaded' : 'Balanced';
 
   return (
-    <div className="dashboard">
-      <Typography variant="h4" gutterBottom>
-        WorkSmart AI Dashboard
+    <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', borderLeft: `4px solid ${loadColor}` }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+        <Box sx={{ width: 38, height: 38, borderRadius: '50%', background: `${loadColor}22`, color: loadColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+          {initials}
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="subtitle2" fontWeight={700} noWrap>{member.display_name}</Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>{member.email}</Typography>
+        </Box>
+        <Chip label={loadLabel} size="small" sx={{ background: `${loadColor}20`, color: loadColor, fontWeight: 700, fontSize: 10 }} />
+      </Box>
+
+      <Grid container spacing={1}>
+        {[
+          { label: 'Work',     value: `${mins2h(member.total_work_minutes)}h`,     color: PRIMARY },
+          { label: 'Overtime', value: `${mins2h(member.total_overtime_minutes)}h`, color: overtime > 0 ? '#ef4444' : '#94a3b8' },
+          { label: 'Meetings', value: `${mins2h(member.total_meeting_minutes)}h`,  color: '#f59e0b' },
+          { label: 'Focus',    value: `${mins2h(member.total_focus_minutes)}h`,    color: '#6366f1' },
+        ].map(s => (
+          <Grid item xs={3} key={s.label}>
+            <Box sx={{ textAlign: 'center', p: 0.75, background: '#f8fafc', borderRadius: 1 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ color: s.color }}>{s.value}</Typography>
+              <Typography variant="caption" color="text.secondary">{s.label}</Typography>
+            </Box>
+          </Grid>
+        ))}
+      </Grid>
+
+      {activeRisks > 0 && (
+        <Box sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <WarningAmberIcon sx={{ fontSize: 14, color: '#ef4444' }} />
+          <Typography variant="caption" sx={{ color: '#ef4444', fontWeight: 600 }}>
+            {activeRisks} active risk{activeRisks > 1 ? 's' : ''}
+          </Typography>
+          {Number(member.ongoing_risks) > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+              · {member.ongoing_risks} ongoing
+            </Typography>
+          )}
+        </Box>
+      )}
+      {member.is_test_user && (
+        <Chip label="Test User" size="small" sx={{ mt: 1, height: 18, fontSize: 10, background: '#f1f5f9', color: '#64748b' }} />
+      )}
+    </Paper>
+  );
+}
+
+// ── Admin Dashboard ───────────────────────────────────────────────────────────
+
+function AdminDashboard() {
+  const { members, loading, error, refetch } = useTeamOverview();
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
+  if (error)   return <Alert severity="error" action={<Button onClick={refetch}>Retry</Button>}>{error}</Alert>;
+
+  const totalUsers   = members.length;
+  const totalRisks   = members.reduce((s, m) => s + Number(m.active_risks), 0);
+  const totalEvents  = members.reduce((s, m) => s + Number(m.total_events), 0);
+  const avgWorkHrs   = members.length
+    ? (members.reduce((s, m) => s + Number(m.total_work_minutes), 0) / members.length / 60).toFixed(1)
+    : '0';
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>Team Workload Dashboard</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Workload overview for all project engineers under your care
       </Typography>
 
-      {/* Overview Cards */}
-      <MetricsCards summary={weeklySummary} />
+      {/* Summary stats */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Team Members"    value={totalUsers}  icon={<GroupIcon />}        color={PRIMARY} />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Active Risks"    value={totalRisks}  icon={<WarningAmberIcon />} color="#ef4444" />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Total Events"    value={totalEvents} icon={<EventIcon />}        color="#10b981" />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Avg Work (total)" value={avgWorkHrs} unit="hrs/member" icon={<AccessTimeIcon />} color="#f59e0b" />
+        </Grid>
+      </Grid>
 
-      {/* Main Charts */}
+      {/* Team member cards */}
+      <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+        Team Members ({members.length})
+      </Typography>
+      {members.length === 0 ? (
+        <Alert severity="info">No team members yet. Seed test users or ask engineers to sign in.</Alert>
+      ) : (
+        <Grid container spacing={2}>
+          {members.map((m) => (
+            <Grid item xs={12} sm={6} lg={4} key={m.id}>
+              <MemberCard member={m} />
+            </Grid>
+          ))}
+        </Grid>
+      )}
+    </Box>
+  );
+}
+
+// ── Personal Dashboard ────────────────────────────────────────────────────────
+
+function PersonalDashboard() {
+  const { data, loading, error, refetch } = useAnalytics();
+  const { active: activeAlerts, acknowledge, dismiss } = useRisks();
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
+  if (error)   return <Box sx={{ p: 3 }}><Alert severity="error" action={<Button onClick={refetch}>Retry</Button>}>{error}</Alert></Box>;
+
+  const week      = data?.currentWeek;
+  const breakdown = data?.timeBreakdown ?? [];
+  const upcoming  = data?.upcomingEvents ?? [];
+
+  const chartData = breakdown.map(b => ({
+    name:  b.taskTypeName,
+    hours: parseFloat((b.totalHours ?? 0).toFixed(1)),
+    color: b.colorCode || PRIMARY,
+  }));
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>My Dashboard</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Your workload overview for this week</Typography>
+
+      {!week && breakdown.length === 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          No data yet. Go to <strong>Settings → Mock Calendar Data</strong> to load a workload profile.
+        </Alert>
+      )}
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Work Hours"  value={week ? week.workHours.toFixed(1) : '—'}     unit="hrs" icon={<AccessTimeIcon />} color={PRIMARY} />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Overtime"    value={week ? week.overtimeHours.toFixed(1) : '—'}  unit="hrs" icon={<TrendingUpIcon />}  color="#ef4444" />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Events"      value={week?.totalEvents ?? '—'}                    icon={<EventIcon />}    color="#10b981" />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard title="Meetings"    value={week?.meetingCount ?? '—'}                   icon={<VideocamIcon />} color="#f59e0b" />
+        </Grid>
+      </Grid>
+
       <Grid container spacing={3}>
-        {/* Time Breakdown */}
-        <Grid item xs={12} lg={8}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Time Breakdown by Task Type
-            </Typography>
-            <TimeBreakdownChart data={weeklySummary?.taskTypeBreakdown} />
+        {/* Time breakdown chart */}
+        <Grid item xs={12} lg={7}>
+          <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0', height: '100%' }}>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Time Breakdown by Task Type</Typography>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart layout="vertical" data={chartData} margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" unit=" hrs" tick={{ fontSize: 12 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={130} />
+                  <Tooltip formatter={(val: number) => [`${val} hrs`, 'Hours']} />
+                  <Bar dataKey="hours" radius={[0, 4, 4, 0]}>
+                    {chartData.map((e, i) => <Cell key={i} fill={e.color || BREAKDOWN_COLORS[i % BREAKDOWN_COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
+                <Typography color="text.secondary">No breakdown data yet</Typography>
+              </Box>
+            )}
           </Paper>
         </Grid>
 
-        {/* Project Distribution */}
-        <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Time by Project
-            </Typography>
-            <ProjectPieChart />
+        {/* Upcoming events */}
+        <Grid item xs={12} lg={5}>
+          <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0', height: '100%' }}>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Upcoming Events (Next 7 Days)</Typography>
+            {upcoming.length > 0 ? (
+              <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                {upcoming.map((evt, idx) => (
+                  <Box key={idx}>
+                    <Box sx={{ py: 1.5, display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: evt.color_code || PRIMARY, mt: 0.7, flexShrink: 0 }} />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" fontWeight={600} noWrap>{evt.subject || 'Untitled'}</Typography>
+                        <Typography variant="caption" color="text.secondary">{fmtTime(evt.start_time)}</Typography>
+                        {evt.task_type && (
+                          <Chip label={evt.task_type} size="small" sx={{ ml: 1, height: 16, fontSize: 10, background: `${evt.color_code}22`, color: evt.color_code || PRIMARY }} />
+                        )}
+                      </Box>
+                      {evt.duration_minutes > 0 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{evt.duration_minutes}m</Typography>
+                      )}
+                    </Box>
+                    {idx < upcoming.length - 1 && <Divider />}
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
+                <Typography color="text.secondary">No upcoming events</Typography>
+              </Box>
+            )}
           </Paper>
         </Grid>
 
-        {/* Workload Heatmap */}
-        <Grid item xs={12} lg={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Daily Workload Heatmap
-            </Typography>
-            <WorkloadHeatmap data={heatmap} />
-          </Paper>
-        </Grid>
-
-        {/* Trends */}
-        <Grid item xs={12} lg={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Workload Trends
-            </Typography>
-            <TrendsChart data={trends} />
-          </Paper>
-        </Grid>
-
-        {/* Risk Alerts */}
-        {activeRisks && activeRisks.length > 0 && (
+        {/* Active risks */}
+        {activeAlerts.length > 0 && (
           <Grid item xs={12}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Risk Alerts & Recommendations
-              </Typography>
-              <RiskAlertList alerts={activeRisks} />
+            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <WarningAmberIcon sx={{ color: '#f59e0b' }} />
+                <Typography variant="h6" fontWeight={600}>My Active Risk Alerts</Typography>
+                <Chip label={activeAlerts.length} size="small" sx={{ background: '#fef3c7', color: '#92400e', fontWeight: 700 }} />
+              </Box>
+              {activeAlerts.map((alert) => (
+                <AlertCard key={alert.id} alert={alert} onAcknowledge={acknowledge} onDismiss={dismiss} />
+              ))}
             </Paper>
           </Grid>
         )}
       </Grid>
-    </div>
+    </Box>
   );
+}
+
+// ── Root component ────────────────────────────────────────────────────────────
+
+export const Dashboard: React.FC = () => {
+  const { isAdmin } = useAuth();
+  return isAdmin ? <AdminDashboard /> : <PersonalDashboard />;
 };

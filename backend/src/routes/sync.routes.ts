@@ -11,6 +11,10 @@ import {
   getSyncStatus,
   getCalendarEvents,
   syncMockCalendar,
+  syncLightMockCalendar,
+  syncHeavyMockCalendar,
+  clearUserData,
+  classifyEvents,
 } from '../controllers/sync.controller';
 
 const router = Router();
@@ -33,7 +37,10 @@ router.post('/calendar', syncUserCalendar);
  * This endpoint is used when Microsoft Graph API access is unavailable
  * due to tenant restrictions or permissions issues.
  */
+router.delete('/clear-data', clearUserData);
 router.post('/mock', syncMockCalendar);
+router.post('/light-mock', syncLightMockCalendar);
+router.post('/heavy-mock', syncHeavyMockCalendar);
 
 /**
  * POST /api/sync/all
@@ -58,5 +65,11 @@ router.get('/status', getSyncStatus);
  * - offset (optional): number - pagination offset (default 0)
  */
 router.get('/events', getCalendarEvents);
+
+/**
+ * POST /api/sync/classify
+ * Manually trigger AI classification for all unclassified events
+ */
+router.post('/classify', classifyEvents);
 
 export default router;

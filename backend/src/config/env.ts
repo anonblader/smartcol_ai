@@ -139,6 +139,21 @@ export const config = {
     maxRequests: getEnvNumber('RATE_LIMIT_MAX_REQUESTS', 100),
   },
 
+  // Email / SMTP
+  email: {
+    host:     getEnv('EMAIL_HOST', 'smtp.gmail.com'),
+    port:     getEnvNumber('EMAIL_PORT', 587),
+    user:     getEnv('EMAIL_USER', ''),
+    pass:     getEnv('EMAIL_PASS', ''),
+    fromName: getEnv('EMAIL_FROM_NAME', 'SmartCol AI'),
+  },
+
+  // Role-based access
+  admin: {
+    emails: getEnv('ADMIN_EMAILS', '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean),
+    frontendUrl: getEnv('FRONTEND_URL', 'http://localhost:3000'),
+  },
+
   // AI Classification Service
   ai: {
     serviceUrl: getEnv('AI_SERVICE_URL', 'http://localhost:8000'),

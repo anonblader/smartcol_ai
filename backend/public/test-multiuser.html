@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-User Test - SmartCol AI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; }
+
+    nav { background: #1e293b; padding: 12px 24px; display: flex; align-items: center; gap: 8px; }
+    nav span { color: #94a3b8; font-size: 13px; margin-right: 8px; }
+    nav a { color: #cbd5e1; text-decoration: none; padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 500; }
+    nav a:hover { background: #334155; color: #fff; }
+    nav a.active { background: #3b82f6; color: #fff; }
+
+    .container { max-width: 1400px; margin: 28px auto; padding: 0 20px; }
+    h1 { color: #1e293b; margin-bottom: 4px; }
+    .subtitle { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+
+    /* ── Top bar ── */
+    .top-bar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 14px 18px; margin-bottom: 22px;
+    }
+    .top-bar-label { font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-right: 4px; }
+    .sep { width: 1px; height: 28px; background: #e2e8f0; margin: 0 6px; }
+
+    button {
+      border: none; padding: 9px 18px; border-radius: 5px; cursor: pointer;
+      font-size: 13px; font-weight: 600; transition: background .15s; color: #fff;
+      white-space: nowrap;
+    }
+    .btn-purple  { background: #7c3aed; } .btn-purple:hover  { background: #6d28d9; }
+    .btn-green   { background: #10b981; } .btn-green:hover   { background: #059669; }
+    .btn-blue    { background: #3b82f6; } .btn-blue:hover    { background: #2563eb; }
+    .btn-gray    { background: #6b7280; } .btn-gray:hover    { background: #4b5563; }
+    .btn-red     { background: #ef4444; } .btn-red:hover     { background: #dc2626; }
+    button:disabled { background: #94a3b8 !important; cursor: not-allowed; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 999;
+      padding: 12px 18px; border-radius: 8px; font-size: 13px; font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15); display: none; max-width: 360px;
+    }
+    #toast.info    { background: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; }
+    #toast.success { background: #d1fae5; color: #065f46; border-left: 4px solid #10b981; }
+    #toast.error   { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+
+    /* ── Summary strip ── */
+    .summary-strip {
+      display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;
+    }
+    .sum-card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 12px 18px; text-align: center; flex: 1; min-width: 110px;
+    }
+    .sum-val { font-size: 26px; font-weight: 700; color: #3b82f6; }
+    .sum-lbl { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+    /* ── Grid ── */
+    .user-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 18px; }
+
+    /* ── User card ── */
+    .user-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; transition: box-shadow .2s; }
+    .user-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+
+    .card-header { padding: 14px 18px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #f1f5f9; }
+    .avatar { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; flex-shrink: 0; }
+    .user-name  { font-size: 15px; font-weight: 700; color: #1e293b; }
+    .user-email { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+    .badge { padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; letter-spacing: .5px; margin-left: auto; flex-shrink: 0; }
+
+    .card-actions { display: flex; gap: 6px; padding: 0 18px 0 0; flex-shrink: 0; }
+    .card-actions button { padding: 5px 12px; font-size: 11px; border-radius: 4px; }
+
+    .card-body { padding: 14px 18px 16px; }
+
+    /* ── Stats ── */
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }
+    .stat { background: #f8fafc; border-radius: 6px; padding: 8px; text-align: center; }
+    .stat-v { font-size: 17px; font-weight: 700; }
+    .stat-l { font-size: 9px; color: #94a3b8; margin-top: 2px; line-height: 1.3; }
+
+    /* ── Bar ── */
+    .bar-label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 5px; }
+    .bar-track { display: flex; height: 16px; border-radius: 4px; overflow: hidden; margin-bottom: 6px; background: #f1f5f9; }
+    .bar-seg   { height: 100%; }
+    .bar-legend { display: flex; flex-wrap: wrap; gap: 6px; font-size: 10px; color: #64748b; margin-bottom: 12px; }
+    .dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 3px; }
+
+    /* ── Risks ── */
+    .risks-label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 6px; }
+    .risk-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; margin: 2px; }
+    .sev-low      { background: #d1fae5; color: #065f46; }
+    .sev-medium   { background: #fef3c7; color: #92400e; }
+    .sev-high     { background: #fee2e2; color: #991b1b; }
+    .sev-critical { background: #ede9fe; color: #5b21b6; }
+    .no-risks { font-size: 11px; color: #10b981; font-weight: 600; }
+
+    /* ── Event count badge ── */
+    .meta-row { font-size: 11px; color: #94a3b8; margin-bottom: 10px; }
+    .meta-row strong { color: #475569; }
+
+    .divider { border: none; border-top: 1px solid #f1f5f9; margin: 10px 0; }
+
+    /* ── Archetype badge colours ── */
+    .arch-balanced    { background: #d1fae5; color: #065f46; }
+    .arch-underloaded { background: #dbeafe; color: #1e40af; }
+    .arch-overloaded  { background: #fee2e2; color: #991b1b; }
+    .arch-meeting-heavy { background: #fef3c7; color: #92400e; }
+    .arch-unknown     { background: #f1f5f9; color: #64748b; }
+
+    .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
+    .empty-state h2 { color: #64748b; margin-bottom: 8px; }
+
+    /* ── Spinner ── */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span>SmartCol AI</span>
+  <a href="/test-auth.html">🔐 Auth</a>
+  <a href="/test-sync.html">🗓️ Sync</a>
+  <a href="/test-analytics.html">📊 Analytics</a>
+  <a href="/test-multiuser.html" class="active">👥 Multi-User</a>
+  <a href="http://localhost:3000" target="_blank" style="color:#93c5fd;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;margin-left:auto;border:1px solid #334155;">🌐 Open Frontend</a>
+</nav>
+
+<div id="toast"></div>
+
+<div class="container">
+  <h1>👥 Multi-User Workload Test</h1>
+  <p class="subtitle">Validate SmartCol AI across multiple users with different workload profiles. Each user is clearly identified by name, email, and profile archetype.</p>
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <span class="top-bar-label">Test Users</span>
+    <button class="btn-purple" id="seedBtn" onclick="seedFixed()">🌱 Seed 4 Fixed Profiles</button>
+    <button class="btn-green"  id="randBtn" onclick="addRandom()">➕ Add Random User</button>
+    <div class="sep"></div>
+    <span class="top-bar-label">View</span>
+    <button class="btn-blue" onclick="loadDashboard()">🔄 Refresh Dashboard</button>
+    <div class="sep"></div>
+    <span class="top-bar-label">Real Users</span>
+    <button class="btn-gray" onclick="window.location.href='/test-sync.html'">🗓️ Go to Sync Page</button>
+    <div class="sep"></div>
+    <span class="top-bar-label">Danger</span>
+    <button class="btn-red" onclick="confirmClearAll()">🗑️ Clear All Test Users</button>
+  </div>
+
+  <!-- Summary strip -->
+  <div class="summary-strip" id="summaryStrip" style="display:none;">
+    <div class="sum-card"><div class="sum-val" id="s-users">—</div><div class="sum-lbl">Users</div></div>
+    <div class="sum-card"><div class="sum-val" id="s-events">—</div><div class="sum-lbl">Total Events</div></div>
+    <div class="sum-card"><div class="sum-val" id="s-risks">—</div><div class="sum-lbl">Active Risks</div></div>
+    <div class="sum-card"><div class="sum-val" id="s-overtime">—</div><div class="sum-lbl">Total Overtime</div></div>
+  </div>
+
+  <!-- Dashboard grid -->
+  <div id="dashboard">
+    <div class="empty-state">
+      <h2>No data yet</h2>
+      <p>Click <strong>Seed 4 Fixed Profiles</strong> to generate the standard test users,<br>or <strong>Add Random User</strong> to create a randomised user immediately.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── helpers ──────────────────────────────────────────────────────────────────
+
+  function fmtMins(m) {
+    m = Number(m);
+    if (!m) return '0m';
+    return m >= 60 ? `${Math.floor(m/60)}h${m%60 ? ` ${m%60}m` : ''}` : `${m}m`;
+  }
+
+  let toastTimer;
+  function toast(msg, type = 'info', duration = 4000) {
+    const el = document.getElementById('toast');
+    el.innerHTML = msg;
+    el.className = type;
+    el.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = 'none'; }, duration);
+  }
+
+  function setLoading(btnId, loading, label) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = loading;
+    btn.innerHTML = loading ? `<span class="spinner"></span>${label}` : label;
+  }
+
+  // ── archetype / profile meta ──────────────────────────────────────────────
+
+  const FIXED_META = {
+    'Alex Rivera':  { archetype: 'balanced',      emoji: '✅', color: '#10b981' },
+    'Jamie Lim':    { archetype: 'underloaded',   emoji: '💤', color: '#3b82f6' },
+    'Morgan Cruz':  { archetype: 'overloaded',    emoji: '🔥', color: '#ef4444' },
+    'Taylor Wong':  { archetype: 'meeting-heavy', emoji: '📅', color: '#f59e0b' },
+  };
+
+  const ARCH_EMOJI = {
+    balanced: '✅', underloaded: '💤', overloaded: '🔥', 'meeting-heavy': '📅',
+  };
+
+  const SEV_CLASS = { low: 'sev-low', medium: 'sev-medium', high: 'sev-high', critical: 'sev-critical' };
+  const SEV_ICON  = { low: '🟢', medium: '🟡', high: '🟠', critical: '🔴' };
+
+  function archClass(a) {
+    return { balanced: 'arch-balanced', underloaded: 'arch-underloaded', overloaded: 'arch-overloaded', 'meeting-heavy': 'arch-meeting-heavy' }[a] || 'arch-unknown';
+  }
+
+  function getArchetype(user) {
+    const fixed = FIXED_META[user.display_name];
+    if (fixed) return fixed.archetype;
+    // Infer from email tag or risk pattern
+    const risks = (user.riskAlerts || []).map(r => r.risk_type_name);
+    if (risks.includes('High Daily Workload')) return 'overloaded';
+    if (risks.includes('Meeting Overload') && !risks.includes('High Daily Workload')) return 'meeting-heavy';
+    if (!risks.length) return 'balanced';
+    return 'underloaded';
+  }
+
+  function getColor(user) {
+    const fixed = FIXED_META[user.display_name];
+    if (fixed) return fixed.color;
+    const a = getArchetype(user);
+    return { balanced: '#10b981', underloaded: '#3b82f6', overloaded: '#ef4444', 'meeting-heavy': '#f59e0b' }[a] || '#94a3b8';
+  }
+
+  // ── API calls ─────────────────────────────────────────────────────────────
+
+  async function seedFixed() {
+    setLoading('seedBtn', true, '🌱 Seeding…');
+    toast('⏳ Seeding 4 fixed-profile users — this takes ~15s…', 'info', 20000);
+    const res  = await fetch('/api/test/seed-users', { method: 'POST' });
+    const data = await res.json();
+    setLoading('seedBtn', false, '🌱 Seed 4 Fixed Profiles');
+    if (data.success) {
+      toast(`✅ Seeded ${data.users.length} users successfully!`, 'success');
+      loadDashboard();
+    } else {
+      toast(`❌ Seed failed: ${data.error}`, 'error');
+    }
+  }
+
+  async function addRandom() {
+    setLoading('randBtn', true, '➕ Adding…');
+    toast('⏳ Generating random user…', 'info', 10000);
+    const res  = await fetch('/api/test/add-random-user', { method: 'POST' });
+    const data = await res.json();
+    setLoading('randBtn', false, '➕ Add Random User');
+    if (data.success) {
+      toast(`✅ Added <strong>${data.displayName}</strong> (${data.archetype}) — ${data.eventsCreated} events, ${data.risks.length} risk(s)`, 'success');
+      loadDashboard();
+    } else {
+      toast(`❌ ${data.error}`, 'error');
+    }
+  }
+
+  async function addEventsToUser(userId, name) {
+    toast(`⏳ Adding random events to <strong>${name}</strong>…`, 'info', 10000);
+    const res  = await fetch(`/api/test/add-random-events/${userId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✅ Added ${data.eventsAdded} events to <strong>${name}</strong>. Risks now: ${data.risks.length ? data.risks.join(', ') : 'none'}`, 'success');
+      loadDashboard();
+    } else {
+      toast(`❌ ${data.error}`, 'error');
+    }
+  }
+
+  async function deleteUser(userId, name) {
+    if (!confirm(`Remove ${name} and all their data?`)) return;
+    const res = await fetch(`/api/test/users/${userId}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast(`🗑️ Removed <strong>${name}</strong>`, 'info');
+      loadDashboard();
+    } else {
+      toast('❌ Delete failed', 'error');
+    }
+  }
+
+  async function confirmClearAll() {
+    if (!confirm('Remove ALL test users and their data? This cannot be undone.')) return;
+    const res  = await fetch('/api/test/users-summary');
+    const data = await res.json();
+    for (const u of data.users) {
+      await fetch(`/api/test/users/${u.id}`, { method: 'DELETE' });
+    }
+    toast('🗑️ All test users removed', 'info');
+    loadDashboard();
+  }
+
+  async function loadDashboard() {
+    const res  = await fetch('/api/test/users-summary');
+    const data = await res.json();
+    if (!data.users || !data.users.length) {
+      document.getElementById('dashboard').innerHTML = `
+        <div class="empty-state">
+          <h2>No users yet</h2>
+          <p>Click <strong>Seed 4 Fixed Profiles</strong> or <strong>Add Random User</strong> to get started.</p>
+        </div>`;
+      document.getElementById('summaryStrip').style.display = 'none';
+      return;
+    }
+    renderSummary(data.users);
+    renderGrid(data.users);
+  }
+
+  // ── render ────────────────────────────────────────────────────────────────
+
+  function renderSummary(users) {
+    document.getElementById('summaryStrip').style.display = 'flex';
+    const real = users.filter(u => !u.is_test_user);
+    const test = users.filter(u => u.is_test_user);
+    document.getElementById('s-users').textContent    = `${real.length} real · ${test.length} test`;
+    document.getElementById('s-events').textContent   = users.reduce((s,u) => s + Number(u.total_events), 0);
+    document.getElementById('s-risks').textContent    = users.reduce((s,u) => s + Number(u.active_risks), 0);
+    document.getElementById('s-overtime').textContent = fmtMins(users.reduce((s,u) => s + Number(u.total_overtime), 0));
+  }
+
+  function renderGrid(users) {
+    const realUsers = users.filter(u => !u.is_test_user);
+    const testUsers = users.filter(u =>  u.is_test_user);
+
+    let html = '';
+
+    if (realUsers.length) {
+      html += `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <span style="font-size:13px;font-weight:700;color:#1e293b;">🔐 Real Users (OAuth Authenticated)</span>
+          <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+          <span style="font-size:11px;color:#94a3b8;">${realUsers.length} user${realUsers.length>1?'s':''}</span>
+        </div>
+        <div class="user-grid" style="margin-bottom:28px;">${realUsers.map(renderCard).join('')}</div>`;
+    }
+
+    if (testUsers.length) {
+      html += `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;${realUsers.length?'margin-top:8px;':''}">
+          <span style="font-size:13px;font-weight:700;color:#1e293b;">🧪 Test Users (Seeded)</span>
+          <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+          <span style="font-size:11px;color:#94a3b8;">${testUsers.length} user${testUsers.length>1?'s':''}</span>
+        </div>
+        <div class="user-grid">${testUsers.map(renderCard).join('')}</div>`;
+    }
+
+    document.getElementById('dashboard').innerHTML = html ||
+      `<div class="empty-state"><h2>No users yet</h2><p>Seed test users or authenticate via the Auth page.</p></div>`;
+  }
+
+  function renderCard(u) {
+    const isReal    = !u.is_test_user;
+    const archetype = getArchetype(u);
+    const color     = isReal ? '#6366f1' : getColor(u);
+    const emoji     = isReal ? '🔐' : (ARCH_EMOJI[archetype] || '👤');
+    const initials  = u.display_name.split(' ').map(n => n[0]).join('').slice(0,2);
+    const safeName  = u.display_name.replace(/'/g, "\\'");
+
+    const totalMins = Number(u.total_work_minutes);
+    const peakMins  = Number(u.peak_daily_minutes);
+    const focusMins = Number(u.total_focus_minutes);
+    const mtgMins   = Number(u.total_meeting_minutes);
+    const otMins    = Number(u.total_overtime);
+    const otherMins = Math.max(0, totalMins - mtgMins - focusMins);
+    const barTotal  = Math.max(totalMins, 1);
+
+    const segs = [
+      { label: 'Meetings',   mins: mtgMins,   color: '#3b82f6' },
+      { label: 'Focus Time', mins: focusMins,  color: '#6366f1' },
+      { label: 'Other Work', mins: otherMins,  color: '#94a3b8' },
+    ].filter(s => s.mins > 0);
+
+    const barHtml = segs.map(s =>
+      `<div class="bar-seg" style="width:${(s.mins/barTotal*100).toFixed(1)}%;background:${s.color};" title="${s.label}: ${fmtMins(s.mins)}"></div>`
+    ).join('');
+
+    const legendHtml = segs.map(s =>
+      `<span><span class="dot" style="background:${s.color};"></span>${s.label}: ${fmtMins(s.mins)}</span>`
+    ).join('');
+
+    const riskHtml = u.riskAlerts && u.riskAlerts.length
+      ? u.riskAlerts.map(r => `
+          <span class="risk-pill ${SEV_CLASS[r.severity] || ''}">
+            ${SEV_ICON[r.severity] || ''}
+            ${r.risk_type_name}
+            <span style="opacity:.55;">(${r.score})</span>
+          </span>`).join('')
+      : `<span class="no-risks">✅ No active risks — healthy workload</span>`;
+
+    // Real user: last login + link to analytics; no Add Events or Delete buttons
+    const lastLogin = u.last_login_at
+      ? `Last login: ${new Date(u.last_login_at).toLocaleDateString()}`
+      : 'Never logged in';
+
+    const actionsHtml = isReal
+      ? `<div class="card-actions">
+           <a href="/test-analytics.html" style="text-decoration:none;">
+             <button class="btn-blue" title="View full analytics for this account">📊 Analytics</button>
+           </a>
+         </div>`
+      : `<div class="card-actions">
+           <button class="btn-green" onclick="addEventsToUser('${u.id}','${safeName}')">➕ Add Events</button>
+           <button class="btn-red"   onclick="deleteUser('${u.id}','${safeName}')">🗑️</button>
+         </div>`;
+
+    const badgeHtml = isReal
+      ? `<span class="badge" style="background:#ede9fe;color:#5b21b6;">REAL USER</span>`
+      : `<span class="badge ${archClass(archetype)}">${archetype.toUpperCase()}</span>`;
+
+    const realNotice = isReal ? `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f5f3ff;border-radius:6px;font-size:11px;color:#6d28d9;margin-bottom:12px;">
+        🔐 <strong>OAuth User</strong> — ${lastLogin}.
+        Sync more data from the <a href="/test-sync.html" style="color:#6d28d9;font-weight:600;">Sync page</a>,
+        then <a href="/test-analytics.html" style="color:#6d28d9;font-weight:600;">view full analytics</a>.
+      </div>` : '';
+
+    const noDataNotice = totalMins === 0 ? `
+      <div style="padding:10px 12px;background:#fff7ed;border-radius:6px;font-size:11px;color:#92400e;margin-bottom:12px;">
+        ⚠️ No workload data yet. ${isReal
+          ? 'Go to the <a href="/test-sync.html" style="color:#92400e;font-weight:600;">Sync page</a> and run a Mock Sync.'
+          : 'Click <strong>➕ Add Events</strong> to generate data for this user.'}
+      </div>` : '';
+
+    return `
+    <div class="user-card" id="card-${u.id}">
+      <div class="card-header" style="background:${color}0d;border-left:4px solid ${color};">
+        <div class="avatar" style="background:${color};">${initials}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="user-name">${emoji} ${u.display_name}</div>
+          <div class="user-email">${u.email}</div>
+        </div>
+        ${badgeHtml}
+        ${actionsHtml}
+      </div>
+
+      <div class="card-body">
+        ${realNotice}
+        ${noDataNotice}
+
+        <!-- Stats -->
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-v" style="color:${color};">${fmtMins(totalMins)}</div>
+            <div class="stat-l">Total Work</div>
+          </div>
+          <div class="stat">
+            <div class="stat-v" style="color:${peakMins > 600 ? '#ef4444' : '#3b82f6'};">${fmtMins(peakMins)}</div>
+            <div class="stat-l">Peak Day</div>
+          </div>
+          <div class="stat">
+            <div class="stat-v" style="color:#6366f1;">${fmtMins(focusMins)}</div>
+            <div class="stat-l">Focus Time</div>
+          </div>
+          <div class="stat">
+            <div class="stat-v">${fmtMins(mtgMins)}</div>
+            <div class="stat-l">In Meetings</div>
+          </div>
+          <div class="stat">
+            <div class="stat-v" style="color:${otMins > 0 ? '#ef4444' : '#94a3b8'};">${fmtMins(otMins)}</div>
+            <div class="stat-l">Overtime</div>
+          </div>
+        </div>
+
+        <!-- Meta -->
+        <div class="meta-row">
+          📋 <strong>${u.total_events}</strong> events &nbsp;·&nbsp;
+          🏷️ <strong>${u.classified_events}</strong> classified &nbsp;·&nbsp;
+          ⚠️ <strong style="color:${Number(u.active_risks)>0?'#ef4444':'#10b981'};">${u.active_risks}</strong> active risk(s)
+          ${Number(u.ongoing_risks)>0 ? `&nbsp;·&nbsp; 🔄 <strong style="color:#f59e0b;">${u.ongoing_risks}</strong> ongoing` : ''}
+        </div>
+
+        <!-- Time bar -->
+        <div class="bar-label">Time Distribution</div>
+        <div class="bar-track">${barHtml || '<div style="width:100%;background:#f1f5f9;border-radius:4px;"></div>'}</div>
+        <div class="bar-legend">${legendHtml || '<span style="color:#94a3b8;">No events yet</span>'}</div>
+
+        <hr class="divider">
+
+        <!-- Risks -->
+        <div class="risks-label">🚨 Risk Alerts</div>
+        <div>${riskHtml}</div>
+      </div>
+    </div>`;
+  }
+
+  // Auto-load on open
+  window.addEventListener('load', async () => {
+    const res  = await fetch('/api/auth/status', { credentials: 'include' });
+    const data = await res.json();
+    if (data.authenticated && !data.isAdmin) {
+      window.location.href = 'http://localhost:3000';
+      return;
+    }
+    loadDashboard();
+  });
+</script>
+</body>
+</html>

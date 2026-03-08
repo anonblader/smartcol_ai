@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Analytics - SmartCol AI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: #1e293b;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    nav span { color: #94a3b8; font-size: 13px; margin-right: 8px; }
+    nav a {
+      color: #cbd5e1;
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 5px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    nav a:hover { background: #334155; color: #fff; }
+    nav a.active { background: #3b82f6; color: #fff; }
+
+    /* ── Layout ── */
+    .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+    h1 { color: #1e293b; margin-bottom: 4px; }
+    .subtitle { color: #64748b; margin-bottom: 24px; font-size: 14px; }
+
+    .section {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .section h2 { font-size: 16px; color: #1e293b; margin-bottom: 14px; }
+
+    button {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      transition: background 0.15s;
+    }
+    button:hover { background: #2563eb; }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+    button.green { background: #10b981; }
+    button.green:hover { background: #059669; }
+
+    .status {
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+    .status.info    { background: #dbeafe; border-left: 4px solid #3b82f6; color: #1e40af; }
+    .status.success { background: #d1fae5; border-left: 4px solid #10b981; color: #065f46; }
+    .status.error   { background: #fee2e2; border-left: 4px solid #ef4444; color: #991b1b; }
+
+    /* ── Stat cards ── */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin: 16px 0; }
+    .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #3b82f6; }
+    .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+    th { background: #f1f5f9; color: #475569; text-align: left; padding: 10px 12px; font-weight: 600; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+
+    /* ── Bar chart ── */
+    .bar-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+    .bar-label { width: 160px; color: #475569; text-align: right; flex-shrink: 0; }
+    .bar-track { flex: 1; background: #f1f5f9; border-radius: 4px; height: 18px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+    .bar-pct   { width: 45px; color: #64748b; font-size: 12px; }
+
+    /* ── Heatmap ── */
+    .heatmap { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+    .hm-day {
+      width: 28px; height: 28px; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; color: #fff; font-weight: 600;
+      cursor: default; transition: transform 0.1s;
+      position: relative;
+    }
+    .hm-day:hover { transform: scale(1.2); z-index: 1; }
+    .hm-day[title]:hover::after {
+      content: attr(title);
+      position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: #fff; font-size: 11px; padding: 4px 8px;
+      border-radius: 4px; white-space: nowrap; z-index: 10;
+    }
+
+    pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; font-size: 12px; overflow-x: auto; margin-top: 12px; }
+
+    /* ── Tabs ── */
+    .tab-btn {
+      background: transparent; color: #64748b; border: none; border-bottom: 3px solid transparent;
+      border-radius: 0; padding: 8px 18px; font-size: 13px; font-weight: 600;
+      cursor: pointer; margin: 0; transition: color 0.15s;
+    }
+    .tab-btn:hover { color: #1e293b; background: transparent; }
+    .tab-active { color: #3b82f6 !important; border-bottom-color: #3b82f6 !important; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span>SmartCol AI</span>
+  <a href="/test-auth.html">🔐 Auth</a>
+  <a href="/test-sync.html">🗓️ Sync</a>
+  <a href="/test-analytics.html" class="active">📊 Analytics</a>
+  <a href="/test-multiuser.html">👥 Multi-User</a>
+  <a href="http://localhost:3000" target="_blank" style="color:#93c5fd;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;margin-left:auto;border:1px solid #334155;">🌐 Open Frontend</a>
+</nav>
+
+<div class="container">
+  <h1>📊 Workload Analytics</h1>
+  <p class="subtitle">Visualise computed workload metrics from classified calendar events.</p>
+
+  <!-- User Selector -->
+  <div class="section" style="padding:16px 20px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <label style="font-size:13px;font-weight:600;color:#475569;white-space:nowrap;">👤 Viewing analytics for:</label>
+      <select id="userSelector" onchange="onUserChange()"
+        style="flex:1;min-width:220px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:5px;font-size:13px;color:#1e293b;background:#fff;">
+        <option value="">— Loading users… —</option>
+      </select>
+      <span id="userBadge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;"></span>
+    </div>
+  </div>
+
+  <!-- Compute -->
+  <div class="section">
+    <h2>1. Compute Workload</h2>
+    <button class="green" onclick="computeWorkload()">⚙️ Compute Workload</button>
+    <p style="font-size:12px;color:#64748b;margin-top:8px;">
+      Aggregates classified events into daily &amp; weekly workload tables.
+      Runs automatically after Mock Sync — use this to recompute manually.
+    </p>
+    <div id="computeStatus"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="section">
+    <h2>2. Dashboard Summary</h2>
+    <button onclick="loadDashboard()">📋 Load Dashboard</button>
+    <div id="dashboardDisplay"></div>
+  </div>
+
+  <!-- Time breakdown -->
+  <div class="section">
+    <h2>3. Time Breakdown by Task Type</h2>
+    <button onclick="loadBreakdown()">🕐 Load Breakdown</button>
+    <div id="breakdownDisplay"></div>
+  </div>
+
+  <!-- Daily workload -->
+  <div class="section">
+    <h2>4. Daily Workload</h2>
+    <button onclick="loadDaily()">📅 Load Daily</button>
+    <div id="dailyDisplay"></div>
+  </div>
+
+  <!-- Weekly workload -->
+  <div class="section">
+    <h2>5. Weekly Summary</h2>
+    <button onclick="loadWeekly()">📆 Load Weekly</button>
+    <div id="weeklyDisplay"></div>
+  </div>
+
+  <!-- Heatmap -->
+  <div class="section">
+    <h2>6. Workload Heatmap (last 30 days)</h2>
+    <button onclick="loadHeatmap()">🔥 Load Heatmap</button>
+    <div id="heatmapDisplay"></div>
+  </div>
+
+  <!-- Risk Detection -->
+  <div class="section">
+    <h2>7. Risk Detection</h2>
+    <button onclick="runDetection()" style="background:#ef4444;">⚠️ Run Risk Detection</button>
+    <p style="font-size:12px;color:#64748b;margin:8px 0 14px;">
+      Runs automatically after Mock Sync. Re-run manually after updating your calendar to check if risks have been resolved.
+    </p>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:2px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">
+      <button id="tab-active"     onclick="switchTab('active')"     class="tab-btn tab-active">🚨 Active</button>
+      <button id="tab-ongoing"    onclick="switchTab('ongoing')"    class="tab-btn">🔄 Ongoing</button>
+      <button id="tab-history"    onclick="switchTab('history')"    class="tab-btn">📋 History</button>
+    </div>
+
+    <div id="risksStatus"></div>
+    <div id="risksDisplay"></div>
+  </div>
+</div>
+
+<script>
+  // ── helpers ──────────────────────────────────────────────────────────────
+
+  function setStatus(id, msg, type) {
+    document.getElementById(id).innerHTML =
+      `<div class="status ${type}">${msg}</div>`;
+  }
+
+  function fmtMins(mins) {
+    const m = Number(mins);
+    if (!m) return '0 min';
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60), rem = m % 60;
+    return rem ? `${h}h ${rem}m` : `${h}h`;
+  }
+
+  function heatColor(mins) {
+    const m = Number(mins);
+    if (m === 0)   return '#e2e8f0';
+    if (m <= 60)   return '#bfdbfe';
+    if (m <= 180)  return '#60a5fa';
+    if (m <= 360)  return '#2563eb';
+    if (m <= 480)  return '#f59e0b';
+    return '#ef4444';
+  }
+
+  // ── API calls ────────────────────────────────────────────────────────────
+
+  async function computeWorkload() {
+    setStatus('computeStatus', 'Computing workload…', 'info');
+    const res = await fetch(apiUrl('/api/analytics/compute'), { method: 'POST', credentials: 'include' });
+    const data = await res.json();
+    if (data.success) {
+      setStatus('computeStatus',
+        `✅ Done — <strong>${data.stats.daysProcessed}</strong> days &amp;
+         <strong>${data.stats.weeksProcessed}</strong> weeks processed.`, 'success');
+    } else {
+      setStatus('computeStatus', `❌ ${data.message}`, 'error');
+    }
+  }
+
+  async function loadDashboard() {
+    setStatus('dashboardDisplay', 'Loading…', 'info');
+    const res = await fetch(apiUrl('/api/analytics/dashboard'), { credentials: 'include' });
+    const data = await res.json();
+
+    const cw = data.currentWeek;
+
+    document.getElementById('dashboardDisplay').innerHTML = `
+      ${cw ? `
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-value">${cw.workHours}h</div>
+          <div class="stat-label">Work Hours (this week)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${cw.overtimeHours}h</div>
+          <div class="stat-label">Overtime (this week)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${cw.totalEvents}</div>
+          <div class="stat-label">Events (this week)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${cw.meetingCount}</div>
+          <div class="stat-label">Meetings (this week)</div>
+        </div>
+      </div>` : '<div class="status info">No data for current week yet.</div>'}
+
+      <h3 style="margin:16px 0 8px;font-size:14px;color:#475569;">Upcoming Events (next 7 days)</h3>
+      ${data.upcomingEvents.length === 0 ? '<p style="color:#94a3b8;font-size:13px;">No upcoming events.</p>' : `
+      <table>
+        <thead><tr><th>Subject</th><th>Start</th><th>Duration</th><th>Type</th></tr></thead>
+        <tbody>
+          ${data.upcomingEvents.map(e => `
+            <tr>
+              <td>${e.subject || '(No Subject)'}</td>
+              <td>${new Date(e.start_time).toLocaleString()}</td>
+              <td>${fmtMins(e.duration_minutes)}</td>
+              <td><span style="background:${e.color_code}22;color:${e.color_code};padding:2px 8px;border-radius:12px;font-size:12px;">${e.task_type}</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`}
+    `;
+  }
+
+  async function loadBreakdown() {
+    setStatus('breakdownDisplay', 'Loading…', 'info');
+    const res = await fetch(apiUrl('/api/analytics/time-breakdown'), { credentials: 'include' });
+    const data = await res.json();
+
+    if (!data.breakdown.length) {
+      setStatus('breakdownDisplay', 'No data yet.', 'info'); return;
+    }
+
+    const bars = data.breakdown.map(b => `
+      <div class="bar-row">
+        <div class="bar-label">${b.taskTypeName}</div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${b.percentage}%;background:${b.colorCode || '#3b82f6'};"></div>
+        </div>
+        <div class="bar-pct">${b.percentage}%</div>
+        <div style="font-size:12px;color:#94a3b8;">${fmtMins(b.totalMinutes)} · ${b.eventCount} events</div>
+      </div>`).join('');
+
+    document.getElementById('breakdownDisplay').innerHTML =
+      `<div style="margin-top:12px;">${bars}</div>
+       <p style="font-size:12px;color:#94a3b8;margin-top:10px;">
+         Total: ${fmtMins(data.totalMinutes)}
+       </p>`;
+  }
+
+  async function loadDaily() {
+    setStatus('dailyDisplay', 'Loading…', 'info');
+    const res = await fetch(apiUrl('/api/analytics/daily'), { credentials: 'include' });
+    const data = await res.json();
+
+    if (!data.daily.length) {
+      setStatus('dailyDisplay', 'No daily data yet.', 'info'); return;
+    }
+
+    document.getElementById('dailyDisplay').innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Total</th><th>Work</th><th>Meetings</th>
+            <th>Focus</th><th>Overtime</th><th>Events</th><th>High Load?</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.daily.map(d => `
+            <tr>
+              <td>${d.date}</td>
+              <td>${fmtMins(d.total_minutes)}</td>
+              <td>${fmtMins(d.work_minutes)}</td>
+              <td>${fmtMins(d.meeting_minutes)}</td>
+              <td>${fmtMins(d.focus_minutes)}</td>
+              <td style="color:${d.overtime_minutes > 0 ? '#ef4444' : '#94a3b8'};">
+                ${fmtMins(d.overtime_minutes)}
+              </td>
+              <td>${d.total_events}</td>
+              <td>${d.has_high_workload
+                ? '<span style="color:#ef4444;font-weight:600;">⚠ Yes</span>'
+                : '<span style="color:#10b981;">✓ No</span>'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  async function loadWeekly() {
+    setStatus('weeklyDisplay', 'Loading…', 'info');
+    const res = await fetch(apiUrl('/api/analytics/weekly?weeks=8'), { credentials: 'include' });
+    const data = await res.json();
+
+    if (!data.weekly.length) {
+      setStatus('weeklyDisplay', 'No weekly data yet.', 'info'); return;
+    }
+
+    document.getElementById('weeklyDisplay').innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Week Starting</th><th>Wk #</th><th>Total</th>
+            <th>Work</th><th>Overtime</th><th>Events</th><th>Meetings</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.weekly.map(w => `
+            <tr>
+              <td>${w.week_start_date}</td>
+              <td>W${w.week_number}</td>
+              <td>${fmtMins(w.total_minutes)}</td>
+              <td>${fmtMins(w.work_minutes)}</td>
+              <td style="color:${w.overtime_minutes > 0 ? '#ef4444' : '#94a3b8'};">
+                ${fmtMins(w.overtime_minutes)}
+              </td>
+              <td>${w.total_events}</td>
+              <td>${w.meeting_count}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  async function loadHeatmap() {
+    setStatus('heatmapDisplay', 'Loading…', 'info');
+    const res = await fetch(apiUrl('/api/analytics/heatmap?days=30'), { credentials: 'include' });
+    const data = await res.json();
+
+    if (!data.heatmap.length) {
+      setStatus('heatmapDisplay', 'No heatmap data yet.', 'info'); return;
+    }
+
+    const cells = data.heatmap.map(d => {
+      const color = heatColor(d.total_minutes);
+      const label = d.total_minutes > 0 ? Math.round(d.total_minutes / 60) + 'h' : '';
+      return `<div class="hm-day"
+                   style="background:${color};"
+                   title="${d.date} · ${fmtMins(d.total_minutes)}${d.has_high_workload ? ' ⚠ High' : ''}">
+                ${label}
+              </div>`;
+    }).join('');
+
+    document.getElementById('heatmapDisplay').innerHTML = `
+      <div class="heatmap">${cells}</div>
+      <div style="display:flex;gap:12px;margin-top:14px;font-size:12px;color:#64748b;align-items:center;">
+        <span>Low</span>
+        ${['#e2e8f0','#bfdbfe','#60a5fa','#2563eb','#f59e0b','#ef4444']
+          .map(c => `<span style="width:18px;height:18px;background:${c};border-radius:3px;display:inline-block;"></span>`)
+          .join('')}
+        <span>High</span>
+      </div>`;
+  }
+
+  // ── Risk detection ───────────────────────────────────────────────────────
+
+  const SEVERITY_COLOR = { low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#7c3aed' };
+  const STATUS_LABEL   = { active: '🔴 Active', acknowledged: '🔄 Ongoing', resolved: '✅ Resolved' };
+  let currentTab = 'active';
+
+  function switchTab(tab) {
+    currentTab = tab;
+    ['active','ongoing','history'].forEach(t => {
+      document.getElementById(`tab-${t}`).classList.toggle('tab-active', t === tab);
+    });
+    document.getElementById('risksDisplay').innerHTML = '';
+    document.getElementById('risksStatus').innerHTML = '';
+    if (tab === 'active')  loadActiveAlerts();
+    if (tab === 'ongoing') loadOngoingAlerts();
+    if (tab === 'history') loadAlertHistory();
+  }
+
+  async function runDetection() {
+    setStatus('risksStatus', 'Running risk detection…', 'info');
+    const res = await fetch(apiUrl('/api/risks/detect'), { method: 'POST', credentials: 'include' });
+    const data = await res.json();
+    if (data.success) {
+      const detected = data.stats.risksDetected;
+      setStatus('risksStatus',
+        `✅ Detection complete — <strong>${detected.length}</strong> risk(s) detected: ${
+          detected.length ? detected.map(r => `<em>${r}</em>`).join(', ') : 'none'
+        }. Created: ${data.stats.alertsCreated}, Updated: ${data.stats.alertsUpdated}.`,
+        detected.length ? 'error' : 'success');
+      switchTab(currentTab);
+    } else {
+      setStatus('risksStatus', `❌ ${data.message}`, 'error');
+    }
+  }
+
+  function renderAlerts(alerts, tab) {
+    if (!alerts.length) {
+      const msgs = {
+        active:  'No active alerts — looking good! 🎉',
+        ongoing: 'No ongoing (acknowledged) alerts.',
+        history: 'No alert history yet.',
+      };
+      document.getElementById('risksDisplay').innerHTML =
+        `<div class="status success" style="margin-top:12px;">${msgs[tab] || 'No alerts found.'}</div>`;
+      return;
+    }
+
+    document.getElementById('risksDisplay').innerHTML = alerts.map(a => {
+      const color = SEVERITY_COLOR[a.severity] || '#94a3b8';
+      const isActive     = a.status === 'active';
+      const isOngoing    = a.status === 'acknowledged';
+      const isResolved   = a.status === 'resolved';
+
+      return `
+      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-top:12px;border-left:4px solid ${color};">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <strong style="color:#1e293b;">${a.title}</strong>
+            <span style="margin-left:8px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;
+              background:${color}22;color:${color};">${a.severity.toUpperCase()}</span>
+            <span style="margin-left:6px;font-size:11px;color:#94a3b8;">${STATUS_LABEL[a.status] || a.status}</span>
+          </div>
+          <div style="font-size:24px;font-weight:700;color:${color};">${a.score}</div>
+        </div>
+
+        <p style="font-size:13px;color:#475569;margin:8px 0 4px;">${a.description}</p>
+        <p style="font-size:12px;color:#10b981;"><strong>💡</strong> ${a.recommendation}</p>
+
+        ${isOngoing ? `
+        <div style="margin-top:8px;padding:8px 12px;background:#fef9c3;border-radius:6px;font-size:12px;color:#92400e;">
+          🔄 <strong>Ongoing</strong> — you've acknowledged this risk. It will auto-resolve the next time
+          risk detection runs and the condition no longer applies.
+        </div>` : ''}
+
+        ${isResolved ? `
+        <div style="margin-top:8px;font-size:12px;color:#10b981;">
+          ✅ Resolved ${a.resolved_at ? 'on ' + new Date(a.resolved_at).toLocaleDateString() : ''}
+        </div>` : ''}
+
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          ${isActive ? `
+            <button onclick="ackAlert('${a.id}')" style="padding:5px 14px;font-size:12px;background:#f59e0b;">
+              🔄 Acknowledge
+            </button>
+            <button onclick="dismissAlert('${a.id}')" style="padding:5px 14px;font-size:12px;background:#6b7280;">
+              ✕ Dismiss
+            </button>` : ''}
+          ${isOngoing ? `
+            <button onclick="dismissAlert('${a.id}')" style="padding:5px 14px;font-size:12px;background:#6b7280;">
+              ✕ Dismiss
+            </button>` : ''}
+          <span style="font-size:11px;color:#94a3b8;">
+            Detected: ${new Date(a.detected_date).toLocaleDateString()}
+            ${a.start_date ? ` · ${a.start_date}` : ''}${a.end_date ? ` → ${a.end_date}` : ''}
+            ${a.acknowledged_at ? ` · Acknowledged: ${new Date(a.acknowledged_at).toLocaleDateString()}` : ''}
+          </span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadActiveAlerts() {
+    const res = await fetch(apiUrl('/api/risks/active'), { credentials: 'include' });
+    const data = await res.json();
+    renderAlerts(data.alerts, 'active');
+  }
+
+  async function loadOngoingAlerts() {
+    const res = await fetch(apiUrl('/api/risks/ongoing'), { credentials: 'include' });
+    const data = await res.json();
+    renderAlerts(data.alerts, 'ongoing');
+  }
+
+  async function loadAlertHistory() {
+    const res = await fetch(apiUrl('/api/risks/history'), { credentials: 'include' });
+    const data = await res.json();
+    renderAlerts(data.alerts, 'history');
+  }
+
+  async function ackAlert(id) {
+    await fetch(`/api/risks/${id}/acknowledge`, { method: 'POST', credentials: 'include' });
+    switchTab('ongoing'); // jump to ongoing tab after acknowledging
+  }
+
+  async function dismissAlert(id) {
+    await fetch(`/api/risks/${id}/dismiss`, { method: 'POST', credentials: 'include' });
+    switchTab(currentTab);
+  }
+
+  // Load active alerts by default when page loads
+  window.addEventListener('load', () => { /* auth guard handles this */ });
+
+  // ── User selector ─────────────────────────────────────────────────────────
+
+  let selectedUserId = '';   // empty = use session user (default)
+  let sessionUserId  = '';
+
+  async function loadUserSelector() {
+    const res  = await fetch('/api/analytics/users-list');
+    const data = await res.json();
+    const sel  = document.getElementById('userSelector');
+
+    sel.innerHTML = '';
+
+    // Session user first
+    const sessionOpt = document.createElement('option');
+    sessionOpt.value = '';
+    sessionOpt.textContent = '🔐 My Account (logged-in user)';
+    sel.appendChild(sessionOpt);
+
+    if (data.users && data.users.length) {
+      // Separator
+      const grpReal = document.createElement('optgroup');
+      grpReal.label = '─── Real Users ───';
+      const grpTest = document.createElement('optgroup');
+      grpTest.label = '─── Test Users ───';
+
+      for (const u of data.users) {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = `${u.is_test ? '🧪' : '🔐'} ${u.display_name} (${u.email})`;
+        (u.is_test ? grpTest : grpReal).appendChild(opt);
+      }
+      if (grpReal.children.length) sel.appendChild(grpReal);
+      if (grpTest.children.length) sel.appendChild(grpTest);
+    }
+  }
+
+  function onUserChange() {
+    const sel = document.getElementById('userSelector');
+    selectedUserId = sel.value;
+
+    const badge = document.getElementById('userBadge');
+    if (!selectedUserId) {
+      badge.textContent = 'Your account';
+      badge.style.cssText = 'font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#ede9fe;color:#5b21b6;';
+    } else {
+      const opt = sel.options[sel.selectedIndex];
+      const isTest = opt.textContent.startsWith('🧪');
+      badge.textContent = isTest ? 'Test user' : 'Real user';
+      badge.style.cssText = `font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${isTest?'#fef3c7;color:#92400e':'#d1fae5;color:#065f46'};`;
+    }
+
+    // Clear all displayed results so they reload with the new user
+    ['computeStatus','dashboardDisplay','breakdownDisplay','dailyDisplay',
+     'weeklyDisplay','heatmapDisplay','risksStatus','risksDisplay'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+  }
+
+  /** Append ?userId= to a URL when a specific user is selected */
+  function apiUrl(path) {
+    return selectedUserId ? `${path}${path.includes('?')?'&':'?'}userId=${selectedUserId}` : path;
+  }
+
+  // ── Auth guard ────────────────────────────────────────────────────────────
+
+  window.addEventListener('load', async () => {
+    const res = await fetch('/api/auth/status', { credentials: 'include' });
+    const data = await res.json();
+    if (data.authenticated && !data.isAdmin) {
+      window.location.href = 'http://localhost:3000';
+      return;
+    }
+    if (data.authenticated) {
+      sessionUserId = data.user?.id || '';
+      await loadUserSelector();
+      loadActiveAlerts(); // pre-load active alerts on page open
+    }
+    if (!data.authenticated) {
+      document.body.innerHTML = `
+        <nav>
+          <span>SmartCol AI</span>
+          <a href="/test-auth.html">🔐 Auth</a>
+          <a href="/test-sync.html">🗓️ Sync</a>
+          <a href="/test-analytics.html" class="active">📊 Analytics</a>
+          <a href="http://localhost:3000" target="_blank" style="color:#93c5fd;text-decoration:none;padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;margin-left:auto;border:1px solid #334155;">🌐 Open Frontend</a>
+</nav>
+        <div class="container" style="margin-top:60px;text-align:center;">
+          <h2>⚠️ Not Authenticated</h2>
+          <p style="color:#64748b;margin:12px 0;">Please log in first.</p>
+          <a href="/test-auth.html"><button>Go to Auth Page</button></a>
+        </div>`;
+    }
+  });
+</script>
+</body>
+</html>
