@@ -195,7 +195,7 @@ app.use(session({
   cookie: {
     httpOnly: true,                                    // Prevents JS access to session cookie
     secure:   process.env.NODE_ENV === 'production',  // HTTPS-only in production
-    sameSite: 'strict',                               // CSRF protection at cookie level
+    sameSite: 'lax',     // CSRF protection — lax allows OAuth redirects; strict breaks them
     maxAge:   8 * 60 * 60 * 1000,                   // 8-hour session lifetime
   },
 }));
@@ -552,7 +552,7 @@ This prevents invalid UUIDs, out-of-range numbers, and malformed dates from reac
 |---|---|---|
 | SQL injection prevention | ✅ Implemented | Parameterised queries throughout |
 | CSRF protection (OAuth) | ✅ Implemented | State parameter validated |
-| Session cookie flags | ✅ Implemented | httpOnly, sameSite:strict, secure (prod) |
+| Session cookie flags | ✅ Implemented | httpOnly, sameSite:lax (OAuth compatible), secure (prod) |
 | Security headers (Helmet) | ✅ Implemented | X-Frame, X-Content-Type, Referrer-Policy, etc. |
 | Rate limiting | ✅ Implemented | 100/15min general, 10/15min auth |
 | HTML escaping in emails | ✅ Implemented | esc() applied to all user-controlled template data |
