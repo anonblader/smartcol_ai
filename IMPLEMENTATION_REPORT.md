@@ -3003,4 +3003,173 @@ A new **Background Jobs** card was added to the Settings page, visible only to a
 
 ---
 
+---
+
+## Phase 7: Email Alert Notification Management *(Partial)*
+
+**Date:** March 9, 2026
+
+### Overview
+
+Phase 7 implements a fully configurable email alert notification system that allows the admin to control which events trigger email notifications to engineers. All functionality is operational — alerts fire at the correct pipeline points with structured HTML emails and console-log fallback when SMTP is not configured. Activating live email delivery requires only SMTP credentials in `.env`.
+
+---
+
+### 7.1 Email Alert Settings
+
+Six alert types are stored in the `email_alert_settings` table (migration 003), each with an on/off toggle, last triggered timestamp, and trigger count:
+
+| Alert Key | Alert Name | Default | Trigger Point |
+|---|---|---|---|
+| `risk_detected` | New Risk Alert | ON | New risk created in `risks.service.ts` |
+| `risk_acknowledged` | Risk Acknowledged | ON | Admin acknowledges in `admin.controller.ts` |
+| `risk_dismissed` | Risk Dismissed | OFF | Admin dismisses in `admin.controller.ts` |
+| `burnout_warning` | Burnout Score Warning | ON | ML score > 75 in `ml-prediction.service.ts` |
+| `high_workload_day` | High Workload Day Alert | OFF | Daily work > 600 min in `analytics.service.ts` |
+| `weekly_digest` | Weekly Workload Digest | OFF (coming soon) | Future — weekly scheduled job |
+
+---
+
+### 7.2 Email Templates
+
+Each alert type has a fully styled HTML email template with:
+- SmartCol AI branded header (dark navy, logo)
+- Colour-coded severity badges and risk cards
+- Recommendation sections
+- Structured plain-text preview in console-log mode
+
+**Console-log output format (demo mode):**
+```
+📧 ─── EMAIL ALERT: Risk Detected ──────────────────────────────
+   To:        Alice Smith <alice@company.com>
+   Subject:   [SmartCol AI] ⚠️ New HIGH Risk: Burnout Risk
+   Risk:      [HIGH] Burnout Risk — 50h+ for 3 consecutive weeks
+   Message:   Sustained high weekly workload detected...
+   Note:      Set EMAIL_USER + EMAIL_PASS in .env to send real emails
+────────────────────────────────────────────────────────────────
+```
+
+---
+
+### 7.3 Trigger Hooks
+
+Email alerts fire non-blocking (`.catch(() => {})`) so a failed email never breaks the main pipeline:
+
+**`risks.service.ts` — `risk_detected`:**
+After `upsertAlert` creates a new alert (action = `'created'`), the user's email is looked up and `triggerRiskDetectedAlert()` is called asynchronously.
+
+**`ml-prediction.service.ts` — `burnout_warning`:**
+After the burnout score is saved, if `score > 75`, the user's email is looked up and `triggerBurnoutWarningAlert()` is called.
+
+**`analytics.service.ts` — `high_workload_day`:**
+After computing each day's workload, if `workMinutes > 600` (standard × 1.25), `triggerHighWorkloadDayAlert()` is called.
+
+**`admin.controller.ts` — `risk_acknowledged` + `risk_dismissed`:**
+Both admin actions now route through the new `email-alerts.service.ts` (replacing the old `sendRiskAcknowledgementEmail` call), which checks the alert setting before sending.
+
+---
+
+### 7.4 Admin UI — Email Alert Notifications Card
+
+A new **Email Alert Notifications** card in the Settings page (admin only):
+
+- **Grouped toggle switches** by category: Risk Alerts / ML Insights / Workload / Digest
+- Per alert: switch, description, last triggered timestamp, trigger count
+- **Send Test Email** button — sends a test to the admin's own account
+- **Demo mode banner** — explains console-log fallback and how to enable SMTP
+- `weekly_digest` displays a "Coming soon" chip and is non-toggleable
+
+---
+
+### 7.5 New Files
+
+| File | Purpose |
+|---|---|
+| `email-alerts.service.ts` | Settings management, 5 HTML templates, trigger functions |
+| `notification-settings.controller.ts` | GET/POST settings, test email handler |
+| `notification-settings.routes.ts` | `/api/notifications/*` routes (admin only) |
+| `database/migrations/003_email_alert_settings.sql` | Table + 6 seeded default rows |
+
+**Modified files:**
+- `app.ts` — registers `/api/notifications` routes
+- `admin.routes.ts` — adds `POST /api/admin/risks/:id/dismiss` route
+- `admin.controller.ts` — dismiss handler + updated acknowledge to use new service
+- `risks.service.ts` — `risk_detected` hook
+- `ml-prediction.service.ts` — `burnout_warning` hook
+- `analytics.service.ts` — `high_workload_day` hook
+- `frontend/src/services/api.ts` — adds `notificationsApi`
+- `frontend/src/pages/Settings.tsx` — `EmailAlertsCard` component
+
+**New API endpoints (admin only):**
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/notifications/settings` | List all alert settings with metadata |
+| `POST` | `/api/notifications/settings` | Toggle alert on/off `{ alertKey, enabled }` |
+| `POST` | `/api/notifications/test` | Send test email to session user |
+| `POST` | `/api/admin/risks/:id/dismiss` | Admin dismiss + email engineer |
+
+---
+
+### 7.6 What Remains (Future Implementation)
+
+The following are intentionally deferred to future implementation:
+
+1. **SMTP credentials** — Add `EMAIL_USER` + `EMAIL_PASS` to `backend/.env`. All templates, hooks, and nodemailer transport are already in place. No code changes needed.
+
+2. **Weekly Digest job** — Requires a new scheduler job (e.g. Monday 8 AM cron) to generate per-user weekly summaries. The `weekly_digest` alert key and DB row are already seeded.
+
+3. **Phase 8 — CI/CD + Production Deployment** — GitHub Actions workflow, Azure App Service, Azure Database for PostgreSQL, Azure Container Registry (Python service), Azure Key Vault (replace Base64 token encryption), Azure Application Insights.
+
+---
+
+## Updated Metrics (Phase 7)
+
+| Metric | Phase 6 | Phase 7 (Total) |
+|---|---|---|
+| Lines of Code | ~38,000 | ~40,500+ |
+| Files | 138+ | 145+ |
+| API Endpoints | 55+ | 59+ |
+| Email Alert Types | 0 | 6 |
+| DB Tables | 17 | 18 |
+| DB Migrations | 2 | 3 |
+
+---
+
+## Final Project Status (Phases 1–7 Complete)
+
+### ✅ Fully Implemented & Tested
+- Microsoft OAuth 2.0 authentication with session management
+- Calendar sync — real Microsoft Graph + 3 mock workload profiles
+- **Hybrid AI event classification** — rule-based first (≥ 0.72), NLI for ambiguous; batched 8 at a time
+- Workload analytics — daily/weekly computation, heatmap, time breakdown
+- Risk detection — 6 algorithms with full Active → Acknowledged → Resolved lifecycle
+- **Off-Day Recommendation Engine** — entitlement-based with accept/decline flow
+- **ML Workload Prediction** — RandomForest, 5-day forecast with confidence bands
+- **ML Burnout Risk Scoring** — GradientBoosting, 0-100 continuous score, 5 levels
+- **Background job scheduling** — Analytics Pipeline (30 min) + Calendar Sync (2 h)
+- **Email Alert Notification Management** — 6 configurable alert types, HTML templates, admin toggle UI, console-log fallback
+- Role-based access control — admin vs engineer views throughout
+- Admin tabbed dashboard — per-member workload detail on tab click
+- Admin risk acknowledgement + dismissal with email notification
+- Multi-user test framework with seeded profiles and pipeline runner
+
+### 🔄 Known Limitations
+- Microsoft Graph returns 401 for personal accounts — mock sync provided as demo workaround
+- Token encryption uses Base64 placeholder — AES-256-GCM + Azure Key Vault for production
+- Email alerts in console-log mode until `EMAIL_USER`/`EMAIL_PASS` set in `.env`
+- ML models trained on synthetic data — accuracy improves with real historical data
+
+### 🔮 Future Implementations (Phase 8 and Beyond)
+- **Email SMTP activation** — add credentials to `.env` (no code changes needed)
+- **Weekly Digest email** — Monday 8 AM scheduled job
+- **CI/CD pipelines** — GitHub Actions on push to `main`
+- **Production deployment** — Azure App Service, Container Registry, PostgreSQL, Key Vault, Application Insights
+- **Real calendar sync** — organisational Microsoft 365 tenant
+- **Push/WebSocket notifications** — real-time in-app alerts
+- **Redis caching** — analytics query performance at scale
+- **Active learning loop** — classifier fine-tuning from corrected classifications
+
+---
+
 *Last updated: March 9, 2026 | SmartCol AI Capstone Project*

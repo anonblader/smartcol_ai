@@ -31,8 +31,8 @@
 | 4.5 | ML Workload Prediction & Burnout Scoring | ✅ Complete |
 | 5 | Frontend Integration & Bug Fixes | ✅ Complete |
 | 6 | Background Job Scheduling | ✅ Complete |
-| 7 | Email SMTP Configuration | 🔄 Pending |
-| 8 | CI/CD & Production Deployment | 🔄 Pending |
+| 7 | Email Alert Notification Management | ✅ Complete (partial — SMTP pending) |
+| 8 | CI/CD & Production Deployment | 🔮 Future Implementation |
 
 ---
 
@@ -124,6 +124,39 @@ Both models persist results to `workload_predictions` and `burnout_scores` table
 | Low Focus Time false positive with no data | Added `work_minutes = 0` guard before triggering |
 | ML-first classifier strategy caused slow bulk classification | Flipped to rule-based first; NLI only for ambiguous events |
 | Heavy mock had 99 events (too many for real-time classification) | Redesigned to 3 longer events/day = 54 total, same 750 min/day |
+
+### Phase 7 — Email Alert Notification Management *(partial)*
+
+Admin-configurable email notification system with 6 alert types, stored in the `email_alert_settings` table. All alerts fall back to structured console-log output when SMTP is not configured, making the feature fully demonstrable without credentials.
+
+**6 alert types (admin toggles each on/off individually):**
+
+| Alert | Default | Trigger |
+|---|---|---|
+| New Risk Alert | ON | When any new risk is detected in an engineer's workload |
+| Risk Acknowledged | ON | When admin acknowledges an engineer's risk alert |
+| Risk Dismissed | OFF | When admin dismisses an engineer's risk alert |
+| Burnout Score Warning | ON | When ML burnout score exceeds 75/100 |
+| High Workload Day | OFF | When a single day exceeds 10 hours (600 min) |
+| Weekly Digest | Coming soon | Planned future weekly summary |
+
+**Trigger hooks added to pipeline:**
+- `risks.service.ts` — fires `risk_detected` on every newly created alert
+- `ml-prediction.service.ts` — fires `burnout_warning` when score > 75
+- `analytics.service.ts` — fires `high_workload_day` when daily work > 600 min
+- `admin.controller.ts` — fires `risk_acknowledged` and `risk_dismissed` on admin actions
+
+**Admin Settings UI (Settings page):**
+- Grouped toggle switches per alert type with colour-coded categories
+- Last triggered timestamp + total trigger count per alert
+- **Send Test Email** button (sends to the logged-in admin's account)
+- Demo mode info banner (console output until SMTP is configured)
+
+**New DB table:** `email_alert_settings` (migration 003) with seeded defaults.
+
+**Remaining for future:** Configure `EMAIL_USER` + `EMAIL_PASS` in `backend/.env` to activate real SMTP delivery. The nodemailer transport, HTML templates, and all trigger hooks are already in place.
+
+---
 
 ### Phase 6 — Background Job Scheduling
 **Two scheduled jobs (node-cron), started on server startup:**
@@ -412,6 +445,12 @@ The original plan specified:
 | `workload_predictions` | 5-day workload forecast per user (refreshed each sync) |
 | `burnout_scores` | Daily burnout score per user, UPSERT on (user_id, score_date) |
 
+**Migration 003 — Email Alert Settings** *(added in Phase 7)*
+
+| Table | Purpose |
+|---|---|
+| `email_alert_settings` | Admin-configurable on/off switches for each email alert type, with last triggered timestamp and trigger count |
+
 ---
 
 ## API Reference
@@ -480,6 +519,14 @@ GET  /api/ml/burnout-score             Latest burnout score (auto-generates if m
 GET  /api/admin/team-overview          All members with summary workload stats
 GET  /api/admin/team-risks             All team risk alerts (filterable by status)
 POST /api/admin/risks/:id/acknowledge  Acknowledge alert + email engineer
+POST /api/admin/risks/:id/dismiss      Dismiss alert + email engineer
+```
+
+### Email Notifications *(requires admin session)*
+```
+GET  /api/notifications/settings       All alert settings (key, name, enabled, last triggered)
+POST /api/notifications/settings       Toggle an alert on/off { alertKey, enabled }
+POST /api/notifications/test           Send test email to the session user
 ```
 
 ### Scheduler *(requires admin session)*
@@ -518,6 +565,8 @@ PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f database/migrations/001_initial_schema.sql
 PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f database/migrations/002_ml_predictions.sql
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
+  -f database/migrations/003_email_alert_settings.sql
 
 # 3. Backend
 cd backend
@@ -561,28 +610,48 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 
 ## What Remains
 
-### Phase 7 — Email SMTP Configuration *(30 minutes)*
-Add credentials to `backend/.env`:
+> The following items are scoped as **future implementations** and will be documented in the final project report. All groundwork (architecture, hooks, and infrastructure) for these features is already in place.
+
+---
+
+### Phase 7 (Remaining) — SMTP Email Delivery
+
+**What's done:** Email templates, trigger hooks, admin toggle UI, DB settings table, and console-log fallback are all fully implemented and working.
+
+**What's left (future):** Connect a live SMTP provider by adding two lines to `backend/.env`:
 ```
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
 ```
-nodemailer is already integrated — risk acknowledgement emails will go live immediately.
+All 5 alert types will immediately send real HTML emails to engineers without any code changes.
+
+Additionally, the **Weekly Digest** alert (currently marked "Coming soon") requires a scheduled job enhancement to generate and send weekly summaries every Monday.
+
+---
 
 ### Phase 8 — CI/CD & Production Deployment
-- **GitHub Actions** workflow: lint + build + type-check on every push to `main`
-- **Azure App Service** for backend (Node.js) and frontend (static build or container)
-- **Azure Container Registry** for the Python classification service
-- **Azure Database for PostgreSQL** (Flexible Server, zone-redundant)
-- **Azure Key Vault** for `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET`, SMTP credentials
-- **Azure Application Insights** for request tracing and error monitoring
 
-### Future Enhancements
-- Real-time push notifications (WebSocket / FCM)
-- Redis caching for analytics queries (performance at scale)
-- Active learning loop — user-corrected classifications fed back as training data
-- Weekly automated summary email (Monday 8 AM scheduled job)
-- Mobile-responsive PWA
+**What's left (future):**
+
+- **GitHub Actions** CI workflow — lint + TypeScript build + type-check on every push to `main`
+- **Azure App Service** — deploy backend (Node.js) and frontend (static React build)
+- **Azure Container Registry** — containerise and deploy the Python classification service
+- **Azure Database for PostgreSQL** (Flexible Server, zone-redundant for HA)
+- **Azure Key Vault** — replace Base64 token encryption placeholder with AES-256-GCM; store `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET`, SMTP credentials securely
+- **Azure Application Insights** — request tracing, error monitoring, performance dashboards
+- **Environment promotion** — separate staging and production environments
+
+---
+
+### Additional Future Enhancements
+
+| Enhancement | Description |
+|---|---|
+| Real calendar sync | Requires org Microsoft 365 tenant with admin-consented `Calendars.Read` |
+| Push / WebSocket notifications | Real-time in-app alerts without page refresh |
+| Redis caching | Cache analytics queries for performance at scale |
+| Active learning loop | Feed user-corrected classifications back as ML training data |
+| Mobile-responsive PWA | Progressive Web App for mobile engineer access |
 
 ---
 
@@ -591,7 +660,7 @@ nodemailer is already integrated — risk acknowledgement emails will go live im
 | File | Description |
 |---|---|
 | `README.md` | This file — project overview, architecture, API reference, change log |
-| `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes (Phases 1–6) |
+| `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes (Phases 1–7) |
 | `TEST_LOGS.md` | 51 test cases across all phases with actual terminal output |
 | `STARTUP_GUIDE.md` | Step-by-step local setup with environment variable reference |
 
