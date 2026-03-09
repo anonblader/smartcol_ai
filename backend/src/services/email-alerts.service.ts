@@ -37,6 +37,27 @@ function isSmtpConfigured(): boolean {
   return !!(config.email.user && config.email.pass);
 }
 
+/**
+ * Decode Microsoft External UPN to a real email address.
+ *
+ * Personal Microsoft accounts authenticated via Azure AD are stored as:
+ *   ariffsanip_gmail.com#EXT#@tenant.onmicrosoft.com
+ *
+ * This decodes back to:   ariffsanip@gmail.com
+ * Regular emails pass through unchanged.
+ */
+function resolveEmail(email: string): string {
+  const extMatch = email.match(/^(.+)#EXT#@.+$/);
+  if (extMatch) {
+    const encoded = extMatch[1]!;                    // e.g. "ariffsanip_gmail.com"
+    const lastUnderscore = encoded.lastIndexOf('_');
+    if (lastUnderscore !== -1) {
+      return encoded.substring(0, lastUnderscore) + '@' + encoded.substring(lastUnderscore + 1);
+    }
+  }
+  return email;
+}
+
 async function getTransport() {
   return nodemailer.createTransport({
     host:   config.email.host,
@@ -74,10 +95,13 @@ async function deliver(
   html:     string,
   preview:  Record<string, string>,
 ): Promise<void> {
+  // Decode Microsoft EXT UPN to real email (e.g. user_gmail.com#EXT#@tenant → user@gmail.com)
+  const resolvedEmail = resolveEmail(toEmail);
+
   if (!isSmtpConfigured()) {
-    logger.info(`[EMAIL — console mode] ${alertKey}`, { to: toEmail, subject });
+    logger.info(`[EMAIL — console mode] ${alertKey}`, { to: resolvedEmail, subject });
     console.log('\n📧 ─── EMAIL ALERT: ' + preview['type'] + ' ' + '─'.repeat(Math.max(0, 44 - (preview['type'] ?? '').length)));
-    console.log(`   To:      ${toName} <${toEmail}>`);
+    console.log(`   To:      ${toName} <${resolvedEmail}>`);
     console.log(`   Subject: ${subject}`);
     Object.entries(preview).forEach(([k, v]) => {
       if (k !== 'type') console.log(`   ${k.padEnd(10)}: ${v}`);
@@ -91,15 +115,15 @@ async function deliver(
     const transport = await getTransport();
     await transport.sendMail({
       from:    `"${config.email.fromName}" <${config.email.user}>`,
-      to:      `"${toName}" <${toEmail}>`,
+      to:      `"${toName}" <${resolvedEmail}>`,
       subject,
       html,
     });
-    logger.info(`Email sent: ${alertKey}`, { to: toEmail });
+    logger.info(`Email sent: ${alertKey}`, { to: resolvedEmail });
   } catch (err) {
     logger.error(`Email send failed: ${alertKey}`, {
       error: err instanceof Error ? err.message : String(err),
-      to:    toEmail,
+      to:    resolvedEmail,
     });
   }
 }
