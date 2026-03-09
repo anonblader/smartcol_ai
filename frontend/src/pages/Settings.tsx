@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Paper, Typography, CircularProgress, Alert, Button,
   Chip, Divider, Snackbar, Grid, IconButton, Tooltip,
+  Switch, FormControlLabel,
 } from '@mui/material';
 import MicrosoftIcon from '@mui/icons-material/Microsoft';
 import SyncIcon from '@mui/icons-material/Sync';
@@ -16,13 +17,15 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon from '@mui/icons-material/Add';
 import PeopleIcon from '@mui/icons-material/People';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import ScheduleIcon from '@mui/icons-material/Schedule';
+import ScheduleIcon   from '@mui/icons-material/Schedule';
+import EmailIcon      from '@mui/icons-material/Email';
+import SendIcon       from '@mui/icons-material/Send';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import { useAuth } from '../hooks/useAuth';
-import { authApi, syncApi, testApi, schedulerApi } from '../services/api';
+import { authApi, syncApi, testApi, schedulerApi, notificationsApi } from '../services/api';
 
 const PRIMARY = '#2563eb';
 
@@ -82,6 +85,197 @@ const LOAD_LABEL = (peakMins: number, totalWorkMins: number) => {
   if (total < 5) return 'Underloaded';
   return 'Balanced';
 };
+
+// ── Email Alerts Card ──────────────────────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
+  risk:     { label: 'Risk Alerts',    color: '#ef4444' },
+  ml:       { label: 'ML Insights',    color: '#7c3aed' },
+  workload: { label: 'Workload',       color: '#f59e0b' },
+  digest:   { label: 'Digest',         color: '#10b981' },
+};
+
+function fmtTs(iso: string | null): string {
+  if (!iso) return 'Never triggered';
+  try { return new Date(iso).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }); }
+  catch { return iso; }
+}
+
+function EmailAlertsCard() {
+  const [settings, setSettings]   = useState<any[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [toggling, setToggling]   = useState<string | null>(null);
+  const [testing, setTesting]     = useState(false);
+  const [testMsg, setTestMsg]     = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await notificationsApi.getSettings();
+      setSettings(res.data?.settings ?? []);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleToggle = async (alertKey: string, current: boolean) => {
+    setToggling(alertKey);
+    try {
+      await notificationsApi.updateSetting(alertKey, !current);
+      setSettings(prev => prev.map(s => s.alert_key === alertKey ? { ...s, enabled: !current } : s));
+    } catch { /* silent */ }
+    finally { setToggling(null); }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestMsg(null);
+    try {
+      const res = await notificationsApi.sendTest();
+      setTestMsg(res.data?.message || 'Test email sent — check server console if SMTP not configured');
+    } catch {
+      setTestMsg('Failed to send test email');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // Group by category
+  const grouped: Record<string, any[]> = {};
+  for (const s of settings) {
+    const cat = s.category || 'alerts';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(s);
+  }
+
+  return (
+    <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', mb: 3 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+        <Box sx={{ width: 40, height: 40, borderRadius: 1.5, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <EmailIcon sx={{ color: '#f59e0b' }} />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle1" fontWeight={700}>Email Alert Notifications</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Control which events trigger email notifications to engineers
+            {' '}
+            <Chip label="Console mode — no SMTP" size="small"
+              sx={{ height: 18, fontSize: 10, background: '#fef3c7', color: '#92400e', ml: 0.5 }} />
+          </Typography>
+        </Box>
+        <Tooltip title="Send a test email to your account">
+          <Button
+            size="small" variant="outlined"
+            startIcon={testing ? <CircularProgress size={12} /> : <SendIcon />}
+            onClick={handleTest} disabled={testing}
+            sx={{ fontSize: 12, borderColor: '#f59e0b', color: '#92400e' }}
+          >
+            {testing ? 'Sending…' : 'Send Test'}
+          </Button>
+        </Tooltip>
+      </Box>
+
+      {testMsg && (
+        <Alert severity="success" sx={{ mb: 2, fontSize: 12 }} onClose={() => setTestMsg(null)}>
+          {testMsg}
+        </Alert>
+      )}
+
+      <Divider sx={{ mb: 2.5 }} />
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+          <CircularProgress size={24} sx={{ color: '#f59e0b' }} />
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {Object.entries(grouped).map(([cat, items]) => {
+            const catCfg = CATEGORY_LABELS[cat] ?? { label: cat, color: '#6b7280' };
+            return (
+              <Box key={cat}>
+                {/* Category label */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: catCfg.color }} />
+                  <Typography variant="caption" fontWeight={700} sx={{ color: catCfg.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {catCfg.label}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {items.map((s: any) => {
+                    const isFuture  = s.alert_key === 'weekly_digest';
+                    const isToggling = toggling === s.alert_key;
+
+                    return (
+                      <Paper key={s.alert_key} variant="outlined" sx={{
+                        p: 1.75, borderRadius: 1.5,
+                        borderLeft: `3px solid ${s.enabled && !isFuture ? catCfg.color : '#e2e8f0'}`,
+                        opacity: isFuture ? 0.6 : 1,
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                          {/* Toggle */}
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={s.enabled}
+                                disabled={isFuture || isToggling}
+                                onChange={() => handleToggle(s.alert_key, s.enabled)}
+                                size="small"
+                                sx={{
+                                  '& .MuiSwitch-switchBase.Mui-checked': { color: catCfg.color },
+                                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: catCfg.color },
+                                }}
+                              />
+                            }
+                            label=""
+                            sx={{ m: 0, mr: 0.5 }}
+                          />
+
+                          {/* Info */}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              <Typography variant="body2" fontWeight={600}>{s.alert_name}</Typography>
+                              {isFuture && (
+                                <Chip label="Coming soon" size="small"
+                                  sx={{ height: 16, fontSize: 9, background: '#f1f5f9', color: '#64748b' }} />
+                              )}
+                              {!isFuture && s.enabled && (
+                                <Chip label="ON" size="small"
+                                  sx={{ height: 16, fontSize: 9, fontWeight: 700, background: `${catCfg.color}20`, color: catCfg.color }} />
+                              )}
+                            </Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                              {s.description}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 2, mt: 0.5, flexWrap: 'wrap' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Last sent: <strong>{fmtTs(s.last_triggered)}</strong>
+                              </Typography>
+                              {s.trigger_count > 0 && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Sent <strong>{s.trigger_count}</strong> time{s.trigger_count > 1 ? 's' : ''}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        </Box>
+                      </Paper>
+                    );
+                  })}
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      <Alert severity="info" sx={{ mt: 2.5, fontSize: 12 }}>
+        <strong>Demo mode:</strong> Emails are logged to the server console. Add <code>EMAIL_USER</code> and <code>EMAIL_PASS</code> to <code>backend/.env</code> to send real emails via SMTP.
+      </Alert>
+    </Paper>
+  );
+}
 
 // ── Scheduler Card ─────────────────────────────────────────────────────────────
 
@@ -754,6 +948,9 @@ export const Settings: React.FC = () => {
           )}
         </Paper>
       )}
+
+      {/* ── Email Alert Notifications (admin only) ── */}
+      {isAdmin && <EmailAlertsCard />}
 
       {/* ── Background Jobs (admin only) ── */}
       {isAdmin && <SchedulerCard />}

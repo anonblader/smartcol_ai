@@ -7,9 +7,10 @@
  * 3. Persists results to workload_predictions and burnout_scores
  */
 
-import { db } from './database.client';
+import { db }     from './database.client';
 import { logger } from '../config/monitoring.config';
 import { predictWorkload, scoreBurnout } from './ml-prediction.client';
+import { triggerBurnoutWarningAlert }    from './email-alerts.service';
 
 export interface MLPredictionResult {
   success: boolean;
@@ -153,6 +154,22 @@ export async function runMLPredictions(userId: string): Promise<MLPredictionResu
 
       result.burnoutScore = scoreResp.score;
       result.burnoutLevel = scoreResp.level;
+
+      // Fire burnout warning email if score > 75 (non-blocking)
+      if (scoreResp.score > 75) {
+        const user = await db.queryOne<{ email: string; display_name: string }>(
+          'SELECT email, display_name FROM users WHERE id = $1', [userId]
+        );
+        if (user) {
+          triggerBurnoutWarningAlert({
+            toEmail: user.email,
+            toName:  user.display_name || user.email,
+            score:   scoreResp.score,
+            level:   scoreResp.level,
+            factors: scoreResp.contributing_factors as string[],
+          }).catch(() => {});
+        }
+      }
     }
 
     result.success = true;

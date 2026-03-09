@@ -5,8 +5,9 @@
  * and persists them to daily_workload and weekly_workload tables.
  */
 
-import { db } from './database.client';
+import { db }     from './database.client';
 import { logger } from '../config/monitoring.config';
+import { triggerHighWorkloadDayAlert } from './email-alerts.service';
 
 export interface WorkloadComputeResult {
   success: boolean;
@@ -161,6 +162,23 @@ export async function computeWorkload(userId: string): Promise<WorkloadComputeRe
       );
 
       result.daysProcessed++;
+
+      // Fire high workload day email if work > 10h (non-blocking, best-effort)
+      if (workMinutes > STANDARD_MINUTES_PER_DAY * 1.25) {
+        db.queryOne<{ email: string; display_name: string }>(
+          'SELECT email, display_name FROM users WHERE id = $1', [userId]
+        ).then(user => {
+          if (user) {
+            triggerHighWorkloadDayAlert({
+              toEmail:     user.email,
+              toName:      user.display_name || user.email,
+              date,
+              workMinutes,
+              overtime:    overtimeMinutes,
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
     }
 
     // -------------------------------------------------------------------------

@@ -12,7 +12,8 @@ import testRoutes from './routes/test.routes';
 import adminRoutes from './routes/admin.routes';
 import offdayRoutes from './routes/offday.routes';
 import mlPredictionRoutes  from './routes/ml-prediction.routes';
-import schedulerRoutes     from './routes/scheduler.routes';
+import schedulerRoutes            from './routes/scheduler.routes';
+import notificationSettingsRoutes from './routes/notification-settings.routes';
 import { requireAdmin }    from './middleware/admin.middleware';
 
 const app = express();
@@ -48,7 +49,8 @@ app.use('/api/risks', risksRoutes);
 app.use('/api/admin',  requireAdmin, adminRoutes);
 app.use('/api/offday', offdayRoutes);
 app.use('/api/ml',        mlPredictionRoutes);
-app.use('/api/scheduler', requireAdmin, schedulerRoutes);
+app.use('/api/scheduler',      requireAdmin, schedulerRoutes);
+app.use('/api/notifications',  requireAdmin, notificationSettingsRoutes);
 app.use('/api/test',      requireAdmin, testRoutes);
 
 // Error logging

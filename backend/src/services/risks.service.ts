@@ -5,8 +5,9 @@
  * and upserts results into risk_alerts.
  */
 
-import { db } from './database.client';
+import { db }     from './database.client';
 import { logger } from '../config/monitoring.config';
+import { triggerRiskDetectedAlert } from './email-alerts.service';
 
 export interface RiskDetectionResult {
   success: boolean;
@@ -402,12 +403,42 @@ export async function detectRisks(userId: string): Promise<RiskDetectionResult> 
       { name: 'Meeting Overload',          fn: () => detectMeetingOverload(userId) },
     ];
 
+    // Fetch user email once for email alerts
+    const user = await db.queryOne<{ email: string; display_name: string }>(
+      'SELECT email, display_name FROM users WHERE id = $1', [userId]
+    );
+
     for (const { name, fn } of detectors) {
       const { triggered, action } = await fn();
       if (triggered) {
         result.risksDetected.push(name);
-        if (action === 'created') result.alertsCreated++;
-        else if (action === 'updated') result.alertsUpdated++;
+        if (action === 'created') {
+          result.alertsCreated++;
+          // Fire email alert for newly created risks (non-blocking)
+          if (user) {
+            const newAlert = await db.queryOne<{
+              title: string; description: string; recommendation: string; severity: string;
+            }>(
+              `SELECT title, description, recommendation, severity
+               FROM risk_alerts
+               WHERE user_id = $1 AND status IN ('active','acknowledged')
+               ORDER BY created_at DESC LIMIT 1`,
+              [userId]
+            );
+            if (newAlert) {
+              triggerRiskDetectedAlert({
+                toEmail:        user.email,
+                toName:         user.display_name || user.email,
+                riskTitle:      newAlert.title,
+                riskDesc:       newAlert.description || '',
+                severity:       newAlert.severity,
+                recommendation: newAlert.recommendation || '',
+              }).catch(() => {});
+            }
+          }
+        } else if (action === 'updated') {
+          result.alertsUpdated++;
+        }
       }
     }
 

@@ -80,6 +80,13 @@ export const adminApi = {
   getUsersList:     ()              => apiClient.get('/analytics/users-list'),
 };
 
+// Notification Settings API (admin only)
+export const notificationsApi = {
+  getSettings:   ()                                   => apiClient.get('/notifications/settings'),
+  updateSetting: (alertKey: string, enabled: boolean) => apiClient.post('/notifications/settings', { alertKey, enabled }),
+  sendTest:      ()                                   => apiClient.post('/notifications/test'),
+};
+
 // Scheduler API (admin only)
 export const schedulerApi = {
   getStatus:  ()                                    => apiClient.get('/scheduler/status'),

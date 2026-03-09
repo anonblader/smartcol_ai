@@ -7,7 +7,7 @@
 import { Request, Response } from 'express';
 import { db } from '../services/database.client';
 import { getTeamOverview, getTeamRisks } from '../services/admin.service';
-import { sendRiskAcknowledgementEmail } from '../services/email.service';
+import { triggerRiskAcknowledgedAlert, triggerRiskDismissedAlert } from '../services/email-alerts.service';
 import { logger } from '../config/monitoring.config';
 import { User } from '../types';
 
@@ -96,17 +96,17 @@ export async function adminAcknowledgeRisk(req: Request, res: Response): Promise
     // Get the risk owner's details
     const riskOwner = await db.queryOne<User>('SELECT email, display_name FROM users WHERE id = $1', [alert.user_id]);
 
-    // Send email notification to the risk owner
+    // Send email notification to the risk owner (uses new alert settings)
     if (riskOwner) {
-      await sendRiskAcknowledgementEmail({
-        toEmail:         riskOwner.email,
-        toName:          riskOwner.display_name || riskOwner.email,
-        adminName:       adminUser?.display_name || 'Your Manager',
-        riskTitle:       alert.title,
-        riskDescription: alert.description || '',
-        recommendation:  alert.recommendation || '',
-        severity:        alert.severity,
-      });
+      triggerRiskAcknowledgedAlert({
+        toEmail:        riskOwner.email,
+        toName:         riskOwner.display_name || riskOwner.email,
+        adminName:      adminUser?.display_name || 'Your Manager',
+        riskTitle:      alert.title,
+        riskDesc:       alert.description || '',
+        recommendation: alert.recommendation || '',
+        severity:       alert.severity,
+      }).catch(() => {});
     }
 
     logger.info('Admin acknowledged risk and sent notification', {
@@ -123,5 +123,54 @@ export async function adminAcknowledgeRisk(req: Request, res: Response): Promise
   } catch (err) {
     logger.error('Admin acknowledge failed', { error: err });
     res.status(500).json({ error: 'InternalServerError', message: 'Failed to acknowledge risk' });
+  }
+}
+
+/**
+ * POST /api/admin/risks/:id/dismiss
+ * Admin force-closes a risk alert and optionally emails the engineer.
+ */
+export async function adminDismissRisk(req: Request, res: Response): Promise<void> {
+  try {
+    const adminUserId = req.session.user_id!;
+    const alertId     = req.params.id ?? '';
+
+    const alert = await db.queryOne<{
+      id: string; user_id: string; title: string; severity: string; status: string;
+    }>(
+      'SELECT id, user_id, title, severity, status FROM risk_alerts WHERE id = $1',
+      [alertId]
+    );
+
+    if (!alert) {
+      res.status(404).json({ error: 'NotFound', message: 'Risk alert not found' });
+      return;
+    }
+
+    await db.query(
+      `UPDATE risk_alerts
+       SET status = 'dismissed', resolved_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [alertId]
+    );
+
+    const adminUser  = await db.queryOne<User>('SELECT display_name FROM users WHERE id = $1', [adminUserId]);
+    const riskOwner  = await db.queryOne<User>('SELECT email, display_name FROM users WHERE id = $1', [alert.user_id]);
+
+    if (riskOwner) {
+      triggerRiskDismissedAlert({
+        toEmail:   riskOwner.email,
+        toName:    riskOwner.display_name || riskOwner.email,
+        adminName: adminUser?.display_name || 'Your Manager',
+        riskTitle: alert.title,
+        severity:  alert.severity,
+      }).catch(() => {});
+    }
+
+    logger.info('Admin dismissed risk', { adminUserId, alertId });
+    res.json({ success: true, message: 'Risk dismissed', emailSent: !!riskOwner });
+  } catch (err) {
+    logger.error('Admin dismiss failed', { error: err });
+    res.status(500).json({ error: 'InternalServerError', message: 'Failed to dismiss risk' });
   }
 }
