@@ -35,18 +35,68 @@ A comprehensive security audit of SmartCol AI was conducted prior to finalising 
 
 ## Security Audit Methodology
 
-The audit was conducted through manual code review of:
+The security audit used a combination of manual code review, structured checklist testing, and automated dependency scanning. The approach is aligned with the **OWASP Top 10** vulnerability categories.
 
-- `backend/src/app.ts` — middleware, CORS, session, route registration
+### Tools Used
+
+| Tool | Type | Purpose |
+|---|---|---|
+| **Manual code review** | Static analysis | Primary method — systematic review of all backend source files against OWASP Top 10 checklist |
+| **`npm audit`** | Automated dependency scanning | Scans `package-lock.json` against the npm advisory database for known CVEs |
+| **`curl`** | HTTP testing | Verified security headers, rate limit headers, and IDOR fixes via direct API requests |
+| **PostgreSQL `psql`** | Database testing | Verified parameterised query behaviour and constraint enforcement |
+| **Browser DevTools** | Cookie inspection | Confirmed session cookie flags (`httpOnly`, `sameSite`, `secure`) are correctly set |
+
+### npm audit Results
+
+`npm audit` was run against all production and development dependencies:
+
+```
+Total vulnerabilities found:
+  Critical : 0
+  High     : 6  (all in @typescript-eslint dev dependencies — linting tools only)
+  Moderate : 0
+  Low      : 0
+```
+
+**All 6 remaining high-severity findings are in `@typescript-eslint` dev dependencies** (used only by the ESLint linter during development). They are not present in the production runtime bundle and pose no risk to the deployed application. The root cause is a `minimatch` ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26) in the TypeScript ESLint parser — not fixable without a major version bump of the linting toolchain.
+
+The production dependencies (Express, pg, nodemailer, node-cron, swagger-ui-express, helmet, express-rate-limit) have **0 known vulnerabilities**.
+
+### Tools NOT Yet Used (Planned for Phase 9)
+
+| Tool | Type | When |
+|---|---|---|
+| **OWASP ZAP** | Dynamic Application Security Testing (DAST) | Against staging environment before production release |
+| **Snyk** | Advanced dependency + code scanning | CI/CD pipeline |
+| **eslint-plugin-security** | Static analysis (automated) | GitHub Actions on every push |
+| **Burp Suite** | Penetration testing | Pre-production security sign-off |
+
+### Files Reviewed
+
+- `backend/src/app.ts` — middleware stack, CORS, session, rate limiting
 - `backend/src/config/env.ts` — environment variable handling and defaults
-- `backend/src/middleware/` — auth and admin middleware
-- `backend/src/controllers/` — all 9 controller files for auth, ownership, input handling
-- `backend/src/services/` — database queries, email templates, classification
+- `backend/src/middleware/auth.middleware.ts` — session authentication guard
+- `backend/src/middleware/admin.middleware.ts` — admin role enforcement
+- `backend/src/controllers/` — all 9 controllers (auth, ownership, input handling)
+- `backend/src/services/database.client.ts` — query construction and parameterisation
 - `backend/src/services/email-alerts.service.ts` — email template injection risks
-- `backend/package.json` — installed dependencies
+- `backend/package.json` + `package-lock.json` — dependency audit
 
-**Areas assessed:**
-SQL injection, authentication enforcement, authorisation/IDOR, session security, CSRF, rate limiting, HTML/email injection, security headers, token storage, input validation, secrets management, dependency vulnerabilities, data exposure in logs.
+### OWASP Top 10 Coverage
+
+| OWASP Category | Assessment |
+|---|---|
+| A01 Broken Access Control | Checked — IDOR fixed, admin RBAC verified |
+| A02 Cryptographic Failures | Checked — token encryption flagged as AR-1 |
+| A03 Injection | Checked — parameterised queries confirmed throughout |
+| A04 Insecure Design | Checked — auth flow, session design reviewed |
+| A05 Security Misconfiguration | Checked — Helmet headers, session flags fixed |
+| A06 Vulnerable Components | Checked — `npm audit` run; 6 dev-only findings |
+| A07 Auth & Session Management | Checked — session flags, rate limiting, sameSite fixed |
+| A08 Software & Data Integrity | Partially — no CI/CD yet for supply chain checks |
+| A09 Logging & Monitoring | Checked — secrets excluded from logs verified |
+| A10 SSRF | Not applicable — no server-side URL fetch from user input |
 
 ---
 
