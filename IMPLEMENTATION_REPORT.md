@@ -3163,7 +3163,8 @@ The following are intentionally deferred to future implementation:
 ### 🔮 Future Implementations (Phase 8 and Beyond)
 - **Email SMTP activation** — add credentials to `.env` (no code changes needed)
 - **Weekly Digest email** — Monday 8 AM scheduled job
-- **CI/CD pipelines** — GitHub Actions on push to `main`
+- **Automated test suite** — Jest unit tests for backend business logic (risk thresholds, scoring formulas, analytics calculations) + Cypress E2E tests for frontend workflows; to be integrated into GitHub Actions CI to run on every push to `main`. The Python classification service already has 17/17 passing pytest tests as a foundation.
+- **CI/CD pipelines** — GitHub Actions on push to `main` (lint + build + type-check + test)
 - **Production deployment** — Azure App Service, Container Registry, PostgreSQL, Key Vault, Application Insights
 - **Real calendar sync** — organisational Microsoft 365 tenant
 - **Push/WebSocket notifications** — real-time in-app alerts

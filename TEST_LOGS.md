@@ -1945,3 +1945,46 @@ cd frontend && npx tsc --noEmit
 **Final Status: ALL PHASE 5 TESTS PASSED ✅**
 
 **Test Report Updated:** March 9, 2026
+
+---
+
+## Testing Approach & Future Test Automation
+
+### Current Testing Coverage
+
+All testing for this project has been conducted as **structured manual testing** with full documentation of commands run, responses received, and per-field validation. 51 test cases are recorded across Phases 1, 4, and 5.
+
+The **Python classification service** has a standalone automated pytest suite:
+
+```bash
+cd classification-service
+pytest tests/
+# 17/17 tests passing
+```
+
+This covers:
+- 12 mock calendar event classifications (test_classifier.py)
+- 5 ambiguous event classifications where NLI excels over rule-based (test_ml_classifier.py)
+
+### Automated Test Suite — Future Implementation
+
+A full automated test suite is planned as part of Phase 8 (CI/CD) and will include:
+
+**Jest — Backend unit tests (TypeScript):**
+- Risk threshold calculations (e.g. 601 min/day triggers High Daily Workload)
+- Off-day priority scoring formula
+- Workload aggregation arithmetic
+- ML prediction service input/output contracts
+
+**Cypress — Frontend E2E tests:**
+- Mock sync → verify dashboard updates
+- Admin acknowledge risk → verify email alert fires
+- Toggle email alert setting → verify persistence
+
+**GitHub Actions — CI integration:**
+- Runs on every push to `main`
+- Pipeline: lint → TypeScript type-check → Jest unit tests → pytest classification tests
+
+The existing manual test documentation (51 cases in this file) serves as the specification baseline for the future automated suite.
+
+**Test Report Updated:** March 9, 2026

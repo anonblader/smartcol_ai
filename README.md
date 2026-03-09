@@ -647,6 +647,7 @@ Additionally, the **Weekly Digest** alert (currently marked "Coming soon") requi
 
 | Enhancement | Description |
 |---|---|
+| Automated test suite | Jest unit tests for backend business logic (risk thresholds, scoring) + Cypress E2E tests; to be wired into GitHub Actions CI on every push to `main` |
 | Real calendar sync | Requires org Microsoft 365 tenant with admin-consented `Calendars.Read` |
 | Push / WebSocket notifications | Real-time in-app alerts without page refresh |
 | Redis caching | Cache analytics queries for performance at scale |
