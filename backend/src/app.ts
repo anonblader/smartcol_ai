@@ -70,7 +70,7 @@ app.use(session({
   cookie: {
     httpOnly: true,                                              // Prevent JS access to cookie
     secure:   process.env.NODE_ENV === 'production',            // HTTPS-only in production
-    sameSite: 'strict',                                         // CSRF protection
+    sameSite: 'lax',                                             // CSRF protection — 'lax' allows OAuth redirects; 'strict' breaks them
     maxAge:   8 * 60 * 60 * 1000,                              // 8-hour session lifetime
   },
 }));
