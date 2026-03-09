@@ -3136,7 +3136,142 @@ The following are intentionally deferred to future implementation:
 
 ---
 
-## Final Project Status (Phases 1–7 Complete)
+---
+
+## Phase 8: Swagger UI, Weekly Digest Email & Active Learning
+
+**Date:** March 9, 2026
+
+### Overview
+
+Phase 8 delivers three high-value features that were originally planned but deferred: interactive API documentation (Swagger UI), automated weekly workload digest emails, and an active learning feedback loop that lets engineers correct AI misclassifications to improve future accuracy.
+
+---
+
+### 8.1 Swagger UI — Interactive API Documentation
+
+**Endpoint:** `GET /api/docs` (also `GET /api/docs.json` for raw spec)
+
+**Implementation:**
+- Installed `swagger-ui-express` + `swagger-jsdoc`
+- `swagger.config.ts` defines a complete OpenAPI 3.0 specification: 45 endpoints across 10 tags
+- Served via `app.ts` with custom SmartCol AI branding (dark header)
+- Raw JSON spec available for import into Postman, Insomnia, or other API tooling
+
+**Tags covered:** Health, Auth, Sync, Analytics, Risks, Off-Day, ML, Admin, Scheduler, Notifications
+
+**Value:** Provides a live, clickable API reference that stakeholders and examiners can explore directly in a browser without needing Postman or reading source code.
+
+---
+
+### 8.2 Weekly Digest Email — Monday 08:00 Scheduled Job
+
+**Schedule:** `0 8 * * 1` (every Monday at 08:00)
+
+**Implementation in `scheduler.service.ts`:**
+- Third job (`weeklyDigest`) registered alongside Analytics Pipeline and Calendar Sync
+- Queries each user's previous week (Mon–Sun) from `weekly_workload` and `daily_workload`
+- Fetches active risk count, latest burnout score, and off-day balance
+- Skips users with no workload data for the previous week
+- Calls `sendWeeklyDigestAlert()` per user (console-log fallback if SMTP not configured)
+- Respects `weekly_digest` toggle in `email_alert_settings` table
+- Available via Run Now + Pause/Resume in the admin scheduler UI
+
+**Email template (`email-alerts.service.ts`):**
+- 4-column metrics grid: Work hours / Overtime / Meetings / Focus
+- Risk section: red warning card (with risk list) or green all-clear
+- Burnout score indicator with colour-coded score display
+- Off-day balance banner (shown only when balance > 0)
+
+**Frontend change:** `weekly_digest` toggle in the Email Notifications settings card is now fully active (removed "Coming soon" state).
+
+---
+
+### 8.3 Active Learning — Classification Feedback Loop
+
+**How it works:**
+
+1. Engineer opens the new **Events** page (sidebar → Events)
+2. Sees all their classified calendar events with type chip, method badge, and confidence %
+3. Clicks the pencil icon on any misclassified event → dropdown of 10 task types → selects correct
+4. Backend immediately:
+   - Updates `event_classifications` for that event (`classification_method = 'user_feedback'`)
+   - Stores correction in `classification_feedback` (migration 004)
+   - Auto-applies the correction to all other events with the **same subject** (pattern learning)
+   - Triggers a non-blocking `computeWorkload` recompute
+5. Future pipeline runs: `event-classification.service.ts` loads `getUserFeedbackPatterns()` before calling the AI. Events matching a corrected subject pattern are classified directly (`pattern-learning-v1.0`) — **no AI API call needed**
+
+**DB table — `classification_feedback` (migration 004):**
+```sql
+event_id, user_id, event_subject,
+original_task_type_id, corrected_task_type_id,
+original_confidence, original_method,
+UNIQUE(event_id)  -- re-correction overwrites previous
+```
+
+**Method badges (Events page):**
+| Badge | Meaning |
+|---|---|
+| `rule_based` | Classified by keyword/structural rules |
+| `ml_model` | Classified by bart-large-mnli NLI model |
+| `✓ You` | Manually corrected by the engineer |
+| `🔁 Learned` | Auto-corrected via pattern matching from a previous correction |
+
+**Feedback Stats card (shown once corrections exist):**
+- Total corrections made
+- Unique subject patterns learned
+- Events auto-corrected via pattern matching
+- Last 5 corrections (subject → original type → corrected type)
+
+---
+
+### 8.4 New Files
+
+| File | Purpose |
+|---|---|
+| `backend/src/config/swagger.config.ts` | Full OpenAPI 3.0 spec (45 endpoints, 10 tags) |
+| `backend/src/services/feedback.service.ts` | Correction submission, pattern learning, stats, events list |
+| `backend/src/controllers/feedback.controller.ts` | HTTP handlers for feedback endpoints |
+| `backend/src/routes/feedback.routes.ts` | `/api/feedback/*` routes |
+| `database/migrations/004_classification_feedback.sql` | Feedback table + indexes |
+
+**Modified files:**
+- `app.ts` — registers `/api/feedback` routes and Swagger UI
+- `scheduler.service.ts` — adds `weeklyDigest` job (3rd job)
+- `email-alerts.service.ts` — adds `sendWeeklyDigestAlert()` template
+- `event-classification.service.ts` — checks `getUserFeedbackPatterns()` before AI call
+- `frontend/src/pages/Events.tsx` — full classified events page (was empty)
+- `frontend/src/App.tsx` — adds `/events` route and sidebar nav item
+- `frontend/src/services/api.ts` — adds `feedbackApi`
+- `frontend/src/pages/Settings.tsx` — enables `weekly_digest` toggle
+
+**New API endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/docs` | Swagger UI interactive API reference |
+| `GET` | `/api/docs.json` | Raw OpenAPI 3.0 spec |
+| `GET` | `/api/feedback/events` | Classified events with correction state |
+| `GET` | `/api/feedback/stats` | Feedback statistics |
+| `POST` | `/api/feedback/correct` | Submit classification correction |
+
+---
+
+## Updated Metrics (Phase 8)
+
+| Metric | Phase 7 | Phase 8 (Total) |
+|---|---|---|
+| Lines of Code | ~40,500 | ~43,500+ |
+| Files | 145+ | 152+ |
+| API Endpoints | 59+ | 65+ |
+| DB Tables | 18 | 19 |
+| DB Migrations | 3 | 4 |
+| Background Jobs | 2 | 3 |
+| Sidebar Pages | 4 | 5 (+ Events) |
+
+---
+
+## Final Project Status (Phases 1–8 Complete)
 
 ### ✅ Fully Implemented & Tested
 - Microsoft OAuth 2.0 authentication with session management
@@ -3147,8 +3282,10 @@ The following are intentionally deferred to future implementation:
 - **Off-Day Recommendation Engine** — entitlement-based with accept/decline flow
 - **ML Workload Prediction** — RandomForest, 5-day forecast with confidence bands
 - **ML Burnout Risk Scoring** — GradientBoosting, 0-100 continuous score, 5 levels
-- **Background job scheduling** — Analytics Pipeline (30 min) + Calendar Sync (2 h)
-- **Email Alert Notification Management** — 6 configurable alert types, HTML templates, admin toggle UI, console-log fallback
+- **Background job scheduling** — Analytics Pipeline (30 min) + Calendar Sync (2 h) + Weekly Digest (Mon 08:00)
+- **Email Alert Notification Management** — 6 configurable alert types incl. weekly digest, HTML templates, admin toggle UI, console-log fallback
+- **Swagger UI** — OpenAPI 3.0 interactive API docs, 45 endpoints, 10 tags at `/api/docs`
+- **Active Learning** — user classification feedback loop with pattern learning, auto-apply, feedback stats
 - Role-based access control — admin vs engineer views throughout
 - Admin tabbed dashboard — per-member workload detail on tab click
 - Admin risk acknowledgement + dismissal with email notification
@@ -3160,16 +3297,14 @@ The following are intentionally deferred to future implementation:
 - Email alerts in console-log mode until `EMAIL_USER`/`EMAIL_PASS` set in `.env`
 - ML models trained on synthetic data — accuracy improves with real historical data
 
-### 🔮 Future Implementations (Phase 8 and Beyond)
-- **Email SMTP activation** — add credentials to `.env` (no code changes needed)
-- **Weekly Digest email** — Monday 8 AM scheduled job
-- **Automated test suite** — Jest unit tests for backend business logic (risk thresholds, scoring formulas, analytics calculations) + Cypress E2E tests for frontend workflows; to be integrated into GitHub Actions CI to run on every push to `main`. The Python classification service already has 17/17 passing pytest tests as a foundation.
+### 🔮 Future Implementations (Phase 9 and Beyond)
+- **Email SMTP activation** — add credentials to `.env` (no code changes needed; all templates and hooks are ready)
+- **Automated test suite** — Jest unit tests for backend business logic + Cypress E2E; integrated into GitHub Actions CI. Python classification service already has 17/17 passing pytest tests.
 - **CI/CD pipelines** — GitHub Actions on push to `main` (lint + build + type-check + test)
 - **Production deployment** — Azure App Service, Container Registry, PostgreSQL, Key Vault, Application Insights
 - **Real calendar sync** — organisational Microsoft 365 tenant
 - **Push/WebSocket notifications** — real-time in-app alerts
 - **Redis caching** — analytics query performance at scale
-- **Active learning loop** — classifier fine-tuning from corrected classifications
 
 ---
 

@@ -19,7 +19,7 @@ A step-by-step guide to get all SmartCol AI services running after a fresh reboo
 
 ## First-Time Setup Only
 
-Run both database migrations before starting the app for the first time:
+Run all four database migrations before starting the app for the first time:
 
 ```bash
 # Replace <password> with your PostgreSQL password (e.g. fly1ngC()wN0vemberR@1n)
@@ -29,6 +29,12 @@ PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
 
 PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f ~/Desktop/Capstone/Project/smartcol_ai/database/migrations/002_ml_predictions.sql
+
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
+  -f ~/Desktop/Capstone/Project/smartcol_ai/database/migrations/003_email_alert_settings.sql
+
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
+  -f ~/Desktop/Capstone/Project/smartcol_ai/database/migrations/004_classification_feedback.sql
 ```
 
 You only need to do this once. On subsequent starts, skip directly to Step 1.
@@ -101,12 +107,14 @@ Wait until you see:
 Server listening on port 3001
 [Scheduler] Background jobs registered
   analyticsPipeline: */30 * * * *
-  calendarSync: 0 */2 * * *
+  calendarSync:      0 */2 * * *
+  weeklyDigest:      0 8 * * 1
 ```
 
-The **background job scheduler** starts automatically with the server. Two jobs are registered:
+The **background job scheduler** starts automatically with the server. Three jobs are registered:
 - **Analytics Pipeline** — runs every 30 minutes (classify → workload → risks → ML predictions)
 - **Calendar Sync** — runs every 2 hours for users with valid Microsoft 365 org tokens
+- **Weekly Digest** — runs every Monday at 08:00, sends each engineer their previous week's workload summary email
 
 **Verify:** `http://localhost:3001/health` → `{"status":"ok"}`
 
@@ -196,8 +204,9 @@ Since the Microsoft Graph API requires an organisational Microsoft 365 account, 
 | PostgreSQL | `pg_isready -h localhost -p 5432` | `accepting connections` |
 | Backend health | `http://localhost:3001/health` | `{"status":"ok"}` |
 | AI Service health | `http://localhost:8000/health` | `{"status":"ok","mode":"hybrid..."}` |
+| Swagger UI | `http://localhost:3001/api/docs` | Interactive API documentation (45 endpoints) |
 | Frontend | `http://localhost:3000` | Login page or dashboard |
-| Scheduler | Settings → Background Jobs (admin) | Both jobs show "never" on first start |
+| Scheduler | Settings → Background Jobs (admin) | 3 jobs show "never" on first start |
 
 ---
 
@@ -209,7 +218,10 @@ Since the Microsoft Graph API requires an organisational Microsoft 365 account, 
 | **Dashboard (admin)** | Team summary stats + one tab per engineer with full workload detail |
 | **Analytics** | Daily table, weekly summary, heatmap, time breakdown chart, workload forecast, burnout score, off-day recommendations |
 | **Risks** | Active / Ongoing / History tabs; admin can acknowledge + email engineer |
-| **Settings → Background Jobs** *(admin)* | Status of Analytics Pipeline + Calendar Sync jobs; Run Now / Pause / Resume |
+| **Events** *(new)* | All classified events with type chip, method badge (rule-based / ML / You / Learned), confidence %; correct any misclassification inline to improve future accuracy |
+| **Settings → Email Alerts** *(admin)* | Toggle each of the 6 email alert types on/off; Send Test Email button |
+| **Settings → Background Jobs** *(admin)* | Status of Analytics Pipeline + Calendar Sync + Weekly Digest jobs; Run Now / Pause / Resume |
+| **Swagger UI** | `http://localhost:3001/api/docs` — interactive API reference for all 45 endpoints |
 
 ---
 
@@ -265,6 +277,9 @@ Make sure PostgreSQL is running and accepting connections (`pg_isready -h localh
 
 **"relation workload_predictions does not exist":**
 Migration 002 has not been run. See [First-Time Setup Only](#first-time-setup-only) above.
+
+**"relation classification_feedback does not exist":**
+Migration 004 has not been run. See [First-Time Setup Only](#first-time-setup-only) above.
 
 **Classification service crashes at startup:**
 The `venv` virtual environment may not be activated. Run `source venv/bin/activate` before `uvicorn`.

@@ -31,8 +31,9 @@
 | 4.5 | ML Workload Prediction & Burnout Scoring | ✅ Complete |
 | 5 | Frontend Integration & Bug Fixes | ✅ Complete |
 | 6 | Background Job Scheduling | ✅ Complete |
-| 7 | Email Alert Notification Management | ✅ Complete (partial — SMTP pending) |
-| 8 | CI/CD & Production Deployment | 🔮 Future Implementation |
+| 7 | Email Alert Notification Management | ✅ Complete (SMTP pending) |
+| 8 | Swagger UI, Weekly Digest & Active Learning | ✅ Complete |
+| 9 | CI/CD & Production Deployment | 🔮 Future Implementation |
 
 ---
 
@@ -124,6 +125,31 @@ Both models persist results to `workload_predictions` and `burnout_scores` table
 | Low Focus Time false positive with no data | Added `work_minutes = 0` guard before triggering |
 | ML-first classifier strategy caused slow bulk classification | Flipped to rule-based first; NLI only for ambiguous events |
 | Heavy mock had 99 events (too many for real-time classification) | Redesigned to 3 longer events/day = 54 total, same 750 min/day |
+
+### Phase 8 — Swagger UI, Weekly Digest & Active Learning
+
+**Swagger UI (`GET /api/docs`)**
+- Full OpenAPI 3.0 interactive API documentation served via `swagger-ui-express`
+- 45 endpoints documented across 10 tags with descriptions, parameters, and example responses
+- Raw JSON spec available at `GET /api/docs.json` for tooling integration
+- Custom SmartCol AI branding in the Swagger UI header
+
+**Weekly Digest Email (Monday 08:00)**
+- Third background job added to scheduler: `0 8 * * 1`
+- Each Monday, sends each engineer a workload summary for the previous week
+- Email includes: 4-column metrics grid (work / overtime / meetings / focus), active risk list, ML burnout score indicator, off-day balance
+- Fully respects the `weekly_digest` admin toggle in notification settings
+- Console-log output in demo mode (no SMTP needed to see it working)
+
+**Active Learning — Classification Feedback Loop**
+- Engineers can correct any AI-misclassified event from the new **Events** page (sidebar)
+- Correction applied immediately; all events with the same subject title auto-corrected
+- Stored in `classification_feedback` table (migration 004)
+- Future pipeline runs use stored corrections **before** calling the AI — known subjects are resolved via pattern matching (`pattern-learning-v1.0`) without any API call
+- **Events page features:** classified event table with method badges (`rule_based` / `ml_model` / `✓ You` / `🔁 Learned`), confidence %, inline correction dropdown, corrected-event checkmark
+- **Feedback Stats card:** total corrections, unique patterns learned, events auto-corrected, recent corrections breakdown
+
+---
 
 ### Phase 7 — Email Alert Notification Management *(partial)*
 
@@ -321,8 +347,8 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 |---|---|---|---|
 | WebSocket / Socket.io real-time updates | Planned | ❌ Not built | Infrastructure complexity; polling/refresh used instead |
 | Push notifications (FCM/mobile) | Planned | ❌ Not built | Requires mobile app or PWA with service worker |
-| Active learning (user feedback loop) | Planned | ❌ Not built | No feedback UI built; classifier corrections not fed back |
-| Swagger UI at `/api/docs` | Planned | ❌ Not built | API documented in this README instead |
+| Active learning (user feedback loop) | Planned | ✅ Built | Events page — inline correction, pattern learning, auto-apply to matching subjects |
+| Swagger UI at `/api/docs` | Planned | ✅ Built | OpenAPI 3.0, 45 endpoints, 10 tags, served via swagger-ui-express |
 | PKCE for OAuth | Planned | ❌ Not built | Standard auth code flow used; PKCE adds browser security but not required server-side |
 | Redis caching for analytics | Planned | ❌ Not built | Queries fast enough at demo scale without it |
 | Automated test suite (Jest/Cypress) | Planned | ❌ Not built | Manual tests documented in TEST_LOGS.md instead |
@@ -390,7 +416,7 @@ The original plan specified:
 - **Redis** for token caching + session → PostgreSQL only (Redis not actively used)
 - **Socket.io** for real-time WebSocket → not implemented (polling/refresh used)
 - **Azure infrastructure** (App Service, Key Vault, Application Insights) → local dev only
-- **Swagger UI** at `/api/docs` → not implemented
+- **Swagger UI** at `/api/docs` → ✅ now implemented (Phase 8)
 
 ---
 
@@ -450,6 +476,12 @@ The original plan specified:
 | Table | Purpose |
 |---|---|
 | `email_alert_settings` | Admin-configurable on/off switches for each email alert type, with last triggered timestamp and trigger count |
+
+**Migration 004 — Classification Feedback** *(added in Phase 8)*
+
+| Table | Purpose |
+|---|---|
+| `classification_feedback` | User classification corrections — stores original type, corrected type, event subject for pattern learning. UNIQUE on event_id. |
 
 ---
 
@@ -529,6 +561,19 @@ POST /api/notifications/settings       Toggle an alert on/off { alertKey, enable
 POST /api/notifications/test           Send test email to the session user
 ```
 
+### Classification Feedback / Active Learning
+```
+GET  /api/feedback/events              Classified events list with correction state (limit param)
+GET  /api/feedback/stats               Feedback statistics (total corrections, patterns, auto-applied)
+POST /api/feedback/correct             Submit a correction { eventId, correctedTypeId }
+```
+
+### API Documentation
+```
+GET  /api/docs                         Swagger UI — interactive API reference (45 endpoints, 10 tags)
+GET  /api/docs.json                    Raw OpenAPI 3.0 spec (JSON) for tooling
+```
+
 ### Scheduler *(requires admin session)*
 ```
 GET  /api/scheduler/status             Current status of all background jobs
@@ -567,6 +612,8 @@ PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f database/migrations/002_ml_predictions.sql
 PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f database/migrations/003_email_alert_settings.sql
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
+  -f database/migrations/004_classification_feedback.sql
 
 # 3. Backend
 cd backend
@@ -614,22 +661,20 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 
 ---
 
-### Phase 7 (Remaining) — SMTP Email Delivery
+### Remaining — SMTP Email Delivery
 
-**What's done:** Email templates, trigger hooks, admin toggle UI, DB settings table, and console-log fallback are all fully implemented and working.
+**What's done:** Email templates (6 alert types including weekly digest), trigger hooks, admin toggle UI, Monday 8 AM scheduler job, DB settings table, and console-log fallback are all fully implemented and working.
 
 **What's left (future):** Connect a live SMTP provider by adding two lines to `backend/.env`:
 ```
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
 ```
-All 5 alert types will immediately send real HTML emails to engineers without any code changes.
-
-Additionally, the **Weekly Digest** alert (currently marked "Coming soon") requires a scheduled job enhancement to generate and send weekly summaries every Monday.
+All 6 alert types (including the weekly digest) will immediately send real HTML emails without any code changes.
 
 ---
 
-### Phase 8 — CI/CD & Production Deployment
+### Phase 9 — CI/CD & Production Deployment
 
 **What's left (future):**
 
@@ -651,7 +696,6 @@ Additionally, the **Weekly Digest** alert (currently marked "Coming soon") requi
 | Real calendar sync | Requires org Microsoft 365 tenant with admin-consented `Calendars.Read` |
 | Push / WebSocket notifications | Real-time in-app alerts without page refresh |
 | Redis caching | Cache analytics queries for performance at scale |
-| Active learning loop | Feed user-corrected classifications back as ML training data |
 | Mobile-responsive PWA | Progressive Web App for mobile engineer access |
 
 ---
@@ -661,7 +705,7 @@ Additionally, the **Weekly Digest** alert (currently marked "Coming soon") requi
 | File | Description |
 |---|---|
 | `README.md` | This file — project overview, architecture, API reference, change log |
-| `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes (Phases 1–7) |
+| `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes (Phases 1–8) |
 | `TEST_LOGS.md` | 51 test cases across all phases with actual terminal output |
 | `STARTUP_GUIDE.md` | Step-by-step local setup with environment variable reference |
 
