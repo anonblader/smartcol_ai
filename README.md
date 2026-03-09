@@ -31,7 +31,7 @@
 | 4.5 | ML Workload Prediction & Burnout Scoring | ✅ Complete |
 | 5 | Frontend Integration & Bug Fixes | ✅ Complete |
 | 6 | Background Job Scheduling | ✅ Complete |
-| 7 | Email Alert Notification Management | ✅ Complete (SMTP pending) |
+| 7 | Email Alert Notification Management | ✅ Complete |
 | 8 | Swagger UI, Weekly Digest & Active Learning | ✅ Complete |
 | 9 | CI/CD & Production Deployment | 🔮 Future Implementation |
 
@@ -180,7 +180,7 @@ Admin-configurable email notification system with 6 alert types, stored in the `
 
 **New DB table:** `email_alert_settings` (migration 003) with seeded defaults.
 
-**Remaining for future:** Configure `EMAIL_USER` + `EMAIL_PASS` in `backend/.env` to activate real SMTP delivery. The nodemailer transport, HTML templates, and all trigger hooks are already in place.
+**SMTP is now configured and active.** All 6 alert types (including weekly digest) deliver real HTML emails via Gmail SMTP. A `resolveEmail()` helper decodes Microsoft EXT UPN addresses (e.g. `user_gmail.com#EXT#@tenant`) back to real Gmail addresses before sending.
 
 ---
 
@@ -352,7 +352,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 | PKCE for OAuth | Planned | ❌ Not built | Standard auth code flow used; PKCE adds browser security but not required server-side |
 | Redis caching for analytics | Planned | ❌ Not built | Queries fast enough at demo scale without it |
 | Automated test suite (Jest/Cypress) | Planned | ❌ Not built | Manual tests documented in TEST_LOGS.md instead |
-| Weekly summary email (automated) | Planned | ❌ Not built | Requires SMTP config + scheduler enhancement |
+| Weekly summary email (automated) | Planned | ✅ Built | Monday 08:00 scheduler job; HTML email with metrics, risks, burnout score, off-day balance |
 | Azure deployment | Planned | 🔄 Pending | Local dev only; deployment guide to be written |
 
 ---
@@ -434,7 +434,7 @@ The original plan specified:
 | **ML Models** | scikit-learn (RandomForest, GradientBoosting), numpy | **Added** — not in original plan |
 | **Frontend** | React 18, TypeScript, MUI v5, Redux Toolkit, Recharts | As planned |
 | **Scheduler** | node-cron | **Changed** from Bull/Redis queue |
-| **Email** | nodemailer (console-log fallback) | As planned; SMTP credentials pending |
+| **Email** | nodemailer + Gmail SMTP (smtp.gmail.com:587) | As planned; SMTP configured and active |
 | **Auth** | Microsoft OAuth 2.0 (MSAL, delegated) | PKCE not implemented |
 | **Token encryption** | Base64 placeholder | **Changed** from AES-256-GCM + Azure Key Vault |
 
@@ -648,7 +648,7 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 | Microsoft Graph 401 on personal accounts | Personal Microsoft accounts cannot access calendar via Graph API | Use the 3 mock sync profiles (Balanced / Overloaded / Underloaded) |
 | Calendar Sync background job | Only works with an org Microsoft 365 tenant + admin-consented `Calendars.Read` permission | Analytics Pipeline job keeps data fresh every 30 min on existing mock data |
 | Token encryption | Base64 placeholder — not production-grade | Replace with AES-256-GCM + Azure Key Vault before production |
-| Email alerts require SMTP | Risk acknowledgement emails fall back to console-log without `EMAIL_USER` / `EMAIL_PASS` | Set credentials in `backend/.env` to enable live email |
+| Microsoft EXT UPN emails | Personal Microsoft accounts store email as `user_gmail.com#EXT#@tenant` — not a valid delivery address | Fixed via `resolveEmail()` decoder in email-alerts.service.ts |
 | ML models on synthetic data | Models trained on generated profiles — accuracy improves as real historical data accumulates | Synthetic data covers typical load patterns well for demo validation |
 | No automated test suite | No Jest / Cypress tests | 51 manual test cases documented in TEST_LOGS.md with actual output |
 | No WebSocket real-time updates | Polling / manual refresh used in frontend | Planned as future enhancement |
@@ -661,16 +661,9 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 
 ---
 
-### Remaining — SMTP Email Delivery
+### ✅ Email SMTP — Complete
 
-**What's done:** Email templates (6 alert types including weekly digest), trigger hooks, admin toggle UI, Monday 8 AM scheduler job, DB settings table, and console-log fallback are all fully implemented and working.
-
-**What's left (future):** Connect a live SMTP provider by adding two lines to `backend/.env`:
-```
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASS=your-app-password
-```
-All 6 alert types (including the weekly digest) will immediately send real HTML emails without any code changes.
+Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 6 alert types deliver real HTML emails to engineers. A Microsoft EXT UPN decoder ensures emails reach the correct Gmail address for personal Microsoft account users.
 
 ---
 

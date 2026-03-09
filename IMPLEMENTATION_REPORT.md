@@ -3111,15 +3111,15 @@ A new **Email Alert Notifications** card in the Settings page (admin only):
 
 ---
 
-### 7.6 What Remains (Future Implementation)
+### 7.6 Completion Status
 
-The following are intentionally deferred to future implementation:
+Phase 7 is fully complete:
 
-1. **SMTP credentials** — Add `EMAIL_USER` + `EMAIL_PASS` to `backend/.env`. All templates, hooks, and nodemailer transport are already in place. No code changes needed.
+1. ✅ **SMTP configured** — Gmail SMTP (`smtp.gmail.com:587`) active with App Password. A `resolveEmail()` helper decodes Microsoft EXT UPN addresses back to real Gmail addresses before sending (e.g. `user_gmail.com#EXT#@tenant` → `user@gmail.com`).
 
-2. **Weekly Digest job** — Requires a new scheduler job (e.g. Monday 8 AM cron) to generate per-user weekly summaries. The `weekly_digest` alert key and DB row are already seeded.
+2. ✅ **Weekly Digest job** — Implemented in Phase 8 as a Monday 08:00 scheduled job.
 
-3. **Phase 8 — CI/CD + Production Deployment** — GitHub Actions workflow, Azure App Service, Azure Database for PostgreSQL, Azure Container Registry (Python service), Azure Key Vault (replace Base64 token encryption), Azure Application Insights.
+3. **Phase 9 — CI/CD + Production Deployment** — GitHub Actions, Azure App Service, Azure Database for PostgreSQL, Azure Container Registry, Azure Key Vault, Application Insights — deferred to future implementation.
 
 ---
 
@@ -3283,7 +3283,7 @@ UNIQUE(event_id)  -- re-correction overwrites previous
 - **ML Workload Prediction** — RandomForest, 5-day forecast with confidence bands
 - **ML Burnout Risk Scoring** — GradientBoosting, 0-100 continuous score, 5 levels
 - **Background job scheduling** — Analytics Pipeline (30 min) + Calendar Sync (2 h) + Weekly Digest (Mon 08:00)
-- **Email Alert Notification Management** — 6 configurable alert types incl. weekly digest, HTML templates, admin toggle UI, console-log fallback
+- **Email Alert Notification Management** — 6 configurable alert types incl. weekly digest, HTML templates, admin toggle UI; Gmail SMTP active with Microsoft EXT UPN decode fix
 - **Swagger UI** — OpenAPI 3.0 interactive API docs, 45 endpoints, 10 tags at `/api/docs`
 - **Active Learning** — user classification feedback loop with pattern learning, auto-apply, feedback stats
 - Role-based access control — admin vs engineer views throughout
@@ -3294,11 +3294,11 @@ UNIQUE(event_id)  -- re-correction overwrites previous
 ### 🔄 Known Limitations
 - Microsoft Graph returns 401 for personal accounts — mock sync provided as demo workaround
 - Token encryption uses Base64 placeholder — AES-256-GCM + Azure Key Vault for production
-- Email alerts in console-log mode until `EMAIL_USER`/`EMAIL_PASS` set in `.env`
+- Microsoft EXT UPN addresses decoded to real Gmail via `resolveEmail()` before sending
 - ML models trained on synthetic data — accuracy improves with real historical data
 
 ### 🔮 Future Implementations (Phase 9 and Beyond)
-- **Email SMTP activation** — add credentials to `.env` (no code changes needed; all templates and hooks are ready)
+- ~~**Email SMTP activation**~~ — ✅ Complete; Gmail SMTP configured with App Password, all 6 alert types delivering real emails
 - **Automated test suite** — Jest unit tests for backend business logic + Cypress E2E; integrated into GitHub Actions CI. Python classification service already has 17/17 passing pytest tests.
 - **CI/CD pipelines** — GitHub Actions on push to `main` (lint + build + type-check + test)
 - **Production deployment** — Azure App Service, Container Registry, PostgreSQL, Key Vault, Application Insights
