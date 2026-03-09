@@ -2,6 +2,8 @@ import express from 'express';
 import session from 'express-session';
 import cors from 'cors';
 import path from 'path';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger.config';
 import { logger } from './config/monitoring.config';
 import authRoutes from './routes/auth.routes';
 import syncRoutes from './routes/sync.routes';
@@ -39,6 +41,15 @@ app.use(session({
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+// Swagger UI — interactive API documentation
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'SmartCol AI — API Docs',
+  customCss: '.swagger-ui .topbar { background: #1e293b; } .swagger-ui .topbar-wrapper img { content: none; } .swagger-ui .topbar-wrapper::after { content: "SmartCol AI"; color: #fff; font-weight: 700; font-size: 18px; }',
+}));
+
+// Raw OpenAPI spec (JSON) for tooling
+app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
 
 // API routes (these match your frontend api.ts expectations)
 app.use('/api/auth', authRoutes);
