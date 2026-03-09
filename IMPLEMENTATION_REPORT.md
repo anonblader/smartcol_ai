@@ -2812,8 +2812,191 @@ if (workMins === 0) { await resolveAlert(userId, 5); return { triggered: false }
 - Multi-user test framework
 
 ### 🔮 Remaining Future Enhancements
-- Background job scheduling
 - Real calendar sync (organisational Microsoft 365 tenant)
+- Push/WebSocket real-time notifications
+- Active learning loop for classifier fine-tuning
+- Redis caching, CI/CD, production deployment
+
+---
+
+---
+
+## Phase 6: Background Job Scheduling
+
+**Date:** March 9, 2026
+
+### Overview
+
+Phase 6 introduces automated background job scheduling using `node-cron`, eliminating the need for admins to manually trigger the analytics pipeline after each sync. Two jobs run continuously on a fixed schedule from server startup.
+
+---
+
+### 6.1 Job: Analytics Pipeline (Every 30 Minutes)
+
+**Schedule:** `*/30 * * * *`
+
+**Purpose:** Keep workload metrics, risk alerts, and ML predictions up to date for all users who have calendar data — without requiring a manual trigger or a new sync.
+
+**Per-user steps:**
+1. Classify any unclassified calendar events (`classifyUserEvents`)
+2. Recompute daily and weekly workload (`computeWorkload`)
+3. Detect and update risk alerts (`detectRisks`)
+4. Refresh ML workload forecast and burnout score (`runMLPredictions`)
+
+**User selection:** Only runs for users who have at least one non-cancelled calendar event. Users with no data are skipped silently.
+
+**Resilience:** Each user is processed in a `try/catch` block — one user's failure does not stop processing for others. The job reports `success`, `partial`, or `failed` based on outcomes.
+
+---
+
+### 6.2 Job: Calendar Sync (Every 2 Hours)
+
+**Schedule:** `0 */2 * * *`
+
+**Purpose:** Pull fresh calendar events from Microsoft Graph for users with valid, non-expired OAuth tokens, then run the full analytics pipeline on the updated data.
+
+**Per-user steps:**
+1. Verify user has a non-expired Graph token (`expires_at > NOW() + 5 min`)
+2. Call `syncCalendarEvents()` — fetches delta from Microsoft Graph
+3. On success: run classify → compute workload → detect risks → ML predictions
+
+**Known limitation:** This job only works for users authenticated with an **organisational Microsoft 365 account** (company/university tenant with admin-consented `Calendars.Read` permission). Personal Microsoft accounts return `401` from the Graph API — this is an Azure AD restriction documented in the known limitations section. For the demo, the Analytics Pipeline job (Job 1) handles all data refresh needs using mock data.
+
+---
+
+### 6.3 Scheduler Lifecycle
+
+**Startup:** `startScheduler()` is called inside `server.listen()` callback in `server.ts` — jobs register only after the HTTP server and database are confirmed ready.
+
+**Shutdown:** `stopScheduler()` is called during graceful shutdown (SIGTERM/SIGINT) via `server.close()`, ensuring in-progress jobs finish before the process exits.
+
+**Job status tracking (in-memory):**
+```typescript
+interface JobStatus {
+  name:            string;   // "Analytics Pipeline"
+  schedule:        string;   // "*/30 * * * *"
+  humanSchedule:   string;   // "Every 30 minutes"
+  enabled:         boolean;  // paused / active
+  running:         boolean;  // currently executing
+  lastRun:         string;   // ISO timestamp
+  lastRunStatus:   'success' | 'partial' | 'failed' | 'never';
+  lastRunDuration: number;   // ms
+  usersProcessed:  number;
+  usersSkipped:    number;
+  errors:          string[]; // per-user error messages
+  nextRun:         string;   // estimated ISO timestamp
+}
+```
+
+---
+
+### 6.4 Backend Implementation
+
+**New files:**
+
+| File | Purpose |
+|---|---|
+| `scheduler.service.ts` | Job logic, status tracking, `startScheduler`, `stopScheduler`, `triggerJob`, `setJobEnabled` |
+| `scheduler.controller.ts` | HTTP handlers for status, trigger, toggle |
+| `scheduler.routes.ts` | Route definitions (`/api/scheduler/*`) |
+
+**Modified files:**
+
+| File | Change |
+|---|---|
+| `server.ts` | Import and call `startScheduler()` / `stopScheduler()` |
+| `app.ts` | Register `/api/scheduler` routes (admin-only via `requireAdmin` middleware) |
+| `package.json` | Added `node-cron` dependency |
+
+**New API endpoints (admin only):**
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/scheduler/status` | Returns current status of all jobs |
+| `POST` | `/api/scheduler/trigger` | Manually trigger a job by `jobKey` |
+| `POST` | `/api/scheduler/toggle` | Enable or pause a job by `jobKey` |
+
+**Startup log output:**
+```
+[Scheduler] Starting background jobs
+[Scheduler] Background jobs registered
+  analyticsPipeline: */30 * * * *
+  calendarSync:      0 */2 * * *
+```
+
+---
+
+### 6.5 Frontend — Background Jobs Card (Settings Page, Admin Only)
+
+A new **Background Jobs** card was added to the Settings page, visible only to admin users.
+
+**Displays per job:**
+- Job name + human-readable schedule
+- Status badge: `success` / `partial` / `failed` / `never` (colour-coded)
+- `Running…` chip when job is actively executing
+- 4 metric tiles: Last Run (relative time), Duration, Users Processed, Next Run (estimated time)
+- Error preview (first error + overflow count) when last run had issues
+
+**Controls:**
+- **Run Now** — manually triggers the job immediately (disabled if already running)
+- **Pause / Resume** — toggles `enabled` flag; paused jobs skip their next scheduled tick without being unregistered
+
+**Auto-refresh:** Status polling every 15 seconds so the card stays live without manual refresh.
+
+---
+
+### 6.6 Verified Behaviour
+
+| Scenario | Result |
+|---|---|
+| Server starts → jobs registered | ✅ Logs confirm both jobs scheduled |
+| Analytics Pipeline triggered manually | ✅ Classifies events, computes workload, detects risks, runs ML |
+| Calendar Sync triggered manually (personal account) | ⚠️ Expected 401 from Graph API — personal accounts not supported |
+| Pause job → scheduled tick fires | ✅ Job skipped (enabled = false) |
+| Resume job | ✅ Job re-enables for next scheduled tick |
+| Auth guard on `/api/scheduler/*` | ✅ Returns 401 without admin session |
+
+---
+
+## Updated Metrics (Phase 6)
+
+| Metric | Phase 5 | Phase 6 (Total) |
+|---|---|---|
+| Lines of Code | ~36,500 | ~38,000+ |
+| Files | 135+ | 138+ |
+| API Endpoints | 52+ | 55+ |
+| Background Jobs | 0 | 2 (pipeline + calendar sync) |
+| npm Packages Added | 0 | 1 (`node-cron`) |
+
+---
+
+## Current Project Status (Updated — Phase 6)
+
+### ✅ Fully Implemented & Tested
+- Microsoft OAuth 2.0 authentication with session management
+- Calendar sync (real Graph API + 3 mock workload profiles)
+- **Hybrid AI event classification** — rule-based first (≥ 0.72), NLI for ambiguous; batched 8 at a time
+- Workload analytics (daily + weekly aggregation, heatmap, time breakdown)
+- Risk detection (6 algorithms, full alert lifecycle)
+- **Off-Day Recommendation Engine** (entitlement-based)
+- **ML Workload Prediction** (RandomForest — 5-day forecast)
+- **ML Burnout Risk Scoring** (GradientBoosting — 0-100 score, 5 levels)
+- **Background job scheduling** — Analytics Pipeline (30 min) + Calendar Sync (2 h)
+- Admin scheduler UI — live status, manual trigger, pause/resume
+- Role-based access control throughout
+- Admin tabbed dashboard — per-member workload detail
+- Email notification on risk acknowledgement (console-log fallback)
+- Multi-user test framework
+
+### 🔄 Known Limitations (Documented)
+- Microsoft Graph calendar sync returns 401 for personal accounts — Calendar Sync job will work once deployed with an org Microsoft 365 tenant
+- Token encryption uses Base64 placeholder — AES-256-GCM + Azure Key Vault for production
+- Email requires SMTP credentials — console-log fallback for demo
+- ML models trained on synthetic data — accuracy improves with real historical data
+
+### 🔮 Remaining Future Enhancements
+- Real calendar sync (organisational Microsoft 365 tenant)
+- Email SMTP configuration for live alerts
 - Push/WebSocket real-time notifications
 - Active learning loop for classifier fine-tuning
 - Redis caching, CI/CD, production deployment

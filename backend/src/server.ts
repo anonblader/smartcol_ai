@@ -9,6 +9,7 @@ import app from './app';
 import { initializeMonitoring, logger } from './config/monitoring.config';
 import { config, logConfig } from './config/env';
 import { initializeDatabase, shutdownDatabase } from './services/database.client';
+import { startScheduler, stopScheduler }        from './services/scheduler.service';
 
 const port = config.port;
 
@@ -36,6 +37,9 @@ async function startServer() {
         environment: config.env,
         port,
       });
+
+      // Start background job scheduler after server is ready
+      startScheduler();
     });
 
     // Graceful shutdown
@@ -46,6 +50,7 @@ async function startServer() {
         logger.info('HTTP server closed');
 
         try {
+          stopScheduler();
           await shutdownDatabase();
           logger.info('Database connections closed');
           process.exit(0);

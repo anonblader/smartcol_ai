@@ -1,19 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  CircularProgress,
-  Alert,
-  Button,
-  Chip,
-  Divider,
-  Snackbar,
-  Grid,
-  IconButton,
-  Tooltip,
+  Box, Paper, Typography, CircularProgress, Alert, Button,
+  Chip, Divider, Snackbar, Grid, IconButton, Tooltip,
 } from '@mui/material';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import MicrosoftIcon from '@mui/icons-material/Microsoft';
 import SyncIcon from '@mui/icons-material/Sync';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
@@ -27,8 +16,13 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon from '@mui/icons-material/Add';
 import PeopleIcon from '@mui/icons-material/People';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
 import { useAuth } from '../hooks/useAuth';
-import { authApi, syncApi, testApi } from '../services/api';
+import { authApi, syncApi, testApi, schedulerApi } from '../services/api';
 
 const PRIMARY = '#2563eb';
 
@@ -88,6 +82,192 @@ const LOAD_LABEL = (peakMins: number, totalWorkMins: number) => {
   if (total < 5) return 'Underloaded';
   return 'Balanced';
 };
+
+// ── Scheduler Card ─────────────────────────────────────────────────────────────
+
+const STATUS_CFG: Record<string, { color: string; bg: string; icon: React.ReactNode }> = {
+  success: { color: '#10b981', bg: '#d1fae5', icon: <CheckCircleIcon sx={{ fontSize: 14 }} /> },
+  partial: { color: '#f59e0b', bg: '#fef3c7', icon: <WarningAmberIcon sx={{ fontSize: 14 }} /> },
+  failed:  { color: '#ef4444', bg: '#fee2e2', icon: <ErrorIcon sx={{ fontSize: 14 }} /> },
+  never:   { color: '#94a3b8', bg: '#f1f5f9', icon: <ScheduleIcon sx={{ fontSize: 14 }} /> },
+};
+
+function fmtRelative(iso: string | null): string {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60)  return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60)  return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m ago`;
+}
+
+function fmtDuration(ms: number | null): string {
+  if (ms === null) return '—';
+  if (ms < 1000)  return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function SchedulerCard() {
+  const [jobs, setJobs]           = useState<Record<string, any>>({});
+  const [loading, setLoading]     = useState(true);
+  const [triggering, setTriggering] = useState<string | null>(null);
+  const [toggling, setToggling]   = useState<string | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = await schedulerApi.getStatus();
+      setJobs(res.data?.jobs ?? {});
+    } catch { /* silent — user may not be admin */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    loadStatus();
+    // Auto-refresh every 15 seconds so status stays live
+    const interval = setInterval(loadStatus, 15000);
+    return () => clearInterval(interval);
+  }, [loadStatus]);
+
+  const handleTrigger = async (jobKey: string) => {
+    setTriggering(jobKey);
+    try {
+      await schedulerApi.trigger(jobKey);
+      setTimeout(loadStatus, 2000); // refresh after a short delay
+    } catch { /* silent */ }
+    finally { setTriggering(null); }
+  };
+
+  const handleToggle = async (jobKey: string, currentEnabled: boolean) => {
+    setToggling(jobKey);
+    try {
+      await schedulerApi.toggle(jobKey, !currentEnabled);
+      await loadStatus();
+    } catch { /* silent */ }
+    finally { setToggling(null); }
+  };
+
+  const jobEntries = Object.entries(jobs);
+
+  return (
+    <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', mb: 3 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+        <Box sx={{ width: 40, height: 40, borderRadius: 1.5, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <ScheduleIcon sx={{ color: '#7c3aed' }} />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle1" fontWeight={700}>Background Jobs</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Automated pipeline runs that keep analytics and risk data up to date
+          </Typography>
+        </Box>
+        <Tooltip title="Refresh status">
+          <IconButton size="small" onClick={loadStatus} sx={{ border: '1px solid #e2e8f0' }}>
+            <RefreshIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
+      <Divider sx={{ mb: 2.5 }} />
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+          <CircularProgress size={24} sx={{ color: '#7c3aed' }} />
+        </Box>
+      ) : jobEntries.length === 0 ? (
+        <Alert severity="info">Scheduler not available</Alert>
+      ) : (
+        <Grid container spacing={2}>
+          {jobEntries.map(([key, job]) => {
+            const cfg        = STATUS_CFG[job.lastRunStatus as string] ?? STATUS_CFG['never']!;
+            const isRunning  = job.running as boolean;
+            const isEnabled  = job.enabled as boolean;
+
+            return (
+              <Grid item xs={12} md={6} key={key}>
+                <Paper variant="outlined" sx={{
+                  p: 2, borderRadius: 1.5,
+                  borderLeft: `4px solid ${isEnabled ? '#7c3aed' : '#cbd5e1'}`,
+                  opacity: isEnabled ? 1 : 0.7,
+                }}>
+                  {/* Job name + status badge */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight={700}>{job.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{job.humanSchedule}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+                      {isRunning && (
+                        <Chip label="Running…" size="small"
+                          sx={{ height: 20, fontSize: 10, background: '#dbeafe', color: '#1e40af', fontWeight: 600 }} />
+                      )}
+                      <Chip
+                        icon={<Box sx={{ color: cfg.color, display: 'flex' }}>{cfg.icon}</Box>}
+                        label={isRunning ? 'In progress' : job.lastRunStatus}
+                        size="small"
+                        sx={{ height: 20, fontSize: 10, fontWeight: 600, background: cfg.bg, color: cfg.color }}
+                      />
+                    </Box>
+                  </Box>
+
+                  {/* Metrics row */}
+                  <Grid container spacing={1} sx={{ mb: 1.5 }}>
+                    {[
+                      { label: 'Last run',   value: fmtRelative(job.lastRun) },
+                      { label: 'Duration',   value: fmtDuration(job.lastRunDuration) },
+                      { label: 'Processed',  value: job.usersProcessed ?? 0 },
+                      { label: 'Next (est)', value: fmtRelative(job.nextRun ? new Date(new Date(job.nextRun).getTime() - Date.now() * 2).toISOString() : null) === '—'
+                        ? (job.nextRun ? new Date(job.nextRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')
+                        : new Date(job.nextRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+                    ].map(m => (
+                      <Grid item xs={6} key={m.label}>
+                        <Box sx={{ background: '#f8fafc', borderRadius: 1, p: 0.75, textAlign: 'center' }}>
+                          <Typography variant="body2" fontWeight={700}>{m.value}</Typography>
+                          <Typography variant="caption" color="text.secondary">{m.label}</Typography>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+
+                  {/* Errors (collapsed) */}
+                  {Array.isArray(job.errors) && job.errors.length > 0 && (
+                    <Alert severity="warning" sx={{ mb: 1.5, py: 0.5, fontSize: 11 }}>
+                      {job.errors[0]}{job.errors.length > 1 ? ` (+${job.errors.length - 1} more)` : ''}
+                    </Alert>
+                  )}
+
+                  {/* Action buttons */}
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small" variant="contained" fullWidth
+                      startIcon={triggering === key ? <CircularProgress size={12} color="inherit" /> : <PlayArrowIcon />}
+                      onClick={() => handleTrigger(key)}
+                      disabled={isRunning || triggering !== null || !isEnabled}
+                      sx={{ fontSize: 11, background: '#7c3aed', '&:hover': { background: '#6d28d9' } }}
+                    >
+                      {triggering === key ? 'Starting…' : 'Run Now'}
+                    </Button>
+                    <Button
+                      size="small" variant="outlined" fullWidth
+                      startIcon={toggling === key ? <CircularProgress size={12} /> : isEnabled ? <PauseIcon /> : <PlayArrowIcon />}
+                      onClick={() => handleToggle(key, isEnabled)}
+                      disabled={toggling !== null}
+                      color={isEnabled ? 'warning' : 'success'}
+                      sx={{ fontSize: 11 }}
+                    >
+                      {toggling === key ? '…' : isEnabled ? 'Pause' : 'Resume'}
+                    </Button>
+                  </Box>
+                </Paper>
+              </Grid>
+            );
+          })}
+        </Grid>
+      )}
+    </Paper>
+  );
+}
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
@@ -574,6 +754,9 @@ export const Settings: React.FC = () => {
           )}
         </Paper>
       )}
+
+      {/* ── Background Jobs (admin only) ── */}
+      {isAdmin && <SchedulerCard />}
 
       <Snackbar
         open={snackbar.open}

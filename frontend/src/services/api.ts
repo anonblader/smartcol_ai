@@ -80,6 +80,13 @@ export const adminApi = {
   getUsersList:     ()              => apiClient.get('/analytics/users-list'),
 };
 
+// Scheduler API (admin only)
+export const schedulerApi = {
+  getStatus:  ()                                    => apiClient.get('/scheduler/status'),
+  trigger:    (jobKey: string)                      => apiClient.post('/scheduler/trigger', { jobKey }),
+  toggle:     (jobKey: string, enabled: boolean)    => apiClient.post('/scheduler/toggle',  { jobKey, enabled }),
+};
+
 // ML Prediction API
 export const mlApi = {
   predict:             ()                 => apiClient.post('/ml/predict'),
