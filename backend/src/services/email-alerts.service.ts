@@ -355,6 +355,110 @@ export async function triggerHighWorkloadDayAlert(params: {
   await markTriggered('high_workload_day');
 }
 
+// ── Alert: Weekly Digest ──────────────────────────────────────────────────────
+
+export interface WeeklyDigestParams {
+  toEmail:        string;
+  toName:         string;
+  weekStart:      string;   // e.g. "Mar 3"
+  weekEnd:        string;   // e.g. "Mar 9, 2026"
+  workHours:      number;
+  overtimeHours:  number;
+  meetingHours:   number;
+  focusHours:     number;
+  activeRisks:    number;
+  riskNames:      string[];
+  burnoutScore:   number | null;
+  burnoutLevel:   string | null;
+  offDayBalance:  number;
+}
+
+export async function sendWeeklyDigestAlert(params: WeeklyDigestParams): Promise<void> {
+  if (!(await isAlertEnabled('weekly_digest'))) return;
+
+  const subject = `[SmartCol AI] 📊 Your Weekly Workload Summary — ${params.weekStart} to ${params.weekEnd}`;
+
+  // Colour helpers
+  const workColor    = params.workHours > 50 ? '#ef4444' : params.workHours > 40 ? '#f59e0b' : '#10b981';
+  const overtimeColor = params.overtimeHours > 0 ? '#ef4444' : '#94a3b8';
+  const burnoutColor = !params.burnoutScore ? '#94a3b8'
+    : params.burnoutScore >= 75 ? '#7c3aed'
+    : params.burnoutScore >= 50 ? '#ef4444'
+    : params.burnoutScore >= 25 ? '#f59e0b'
+    : '#10b981';
+
+  const riskSection = params.activeRisks > 0
+    ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px 20px;margin:0 0 20px;">
+        <p style="color:#991b1b;font-size:13px;font-weight:700;margin:0 0 8px;">⚠️ ${params.activeRisks} Active Risk${params.activeRisks > 1 ? 's' : ''}</p>
+        ${params.riskNames.map(r => `<p style="color:#7f1d1d;font-size:13px;margin:2px 0;">• ${r}</p>`).join('')}
+        <p style="color:#991b1b;font-size:12px;margin:8px 0 0;">Log in to SmartCol AI to review and acknowledge these alerts.</p>
+       </div>`
+    : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;margin:0 0 20px;">
+        <p style="color:#065f46;font-size:13px;font-weight:700;margin:0;">✅ No active risk alerts this week</p>
+       </div>`;
+
+  const burnoutSection = params.burnoutScore !== null
+    ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 20px;display:flex;align-items:center;gap:16px;">
+        <div style="text-align:center;min-width:64px;">
+          <p style="color:${burnoutColor};font-size:36px;font-weight:800;margin:0;line-height:1;">${params.burnoutScore}</p>
+          <p style="color:${burnoutColor};font-size:11px;font-weight:700;margin:2px 0 0;text-transform:uppercase;">/ 100</p>
+        </div>
+        <div>
+          <p style="color:#1e293b;font-size:13px;font-weight:600;margin:0 0 2px;">Burnout Risk Score — ${(params.burnoutLevel ?? 'unknown').toUpperCase()}</p>
+          <p style="color:#475569;font-size:12px;margin:0;">Based on your workload patterns from the last 4 weeks.</p>
+        </div>
+       </div>`
+    : '';
+
+  const offDaySection = params.offDayBalance > 0
+    ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 16px;margin:0 0 20px;">
+        <p style="color:#065f46;font-size:13px;margin:0;">
+          🏖️ You have <strong>${params.offDayBalance} off-day${params.offDayBalance > 1 ? 's' : ''}</strong> available.
+          Use the Off-Day Recommendations in SmartCol AI to plan your rest.
+        </p>
+       </div>`
+    : '';
+
+  const html = emailWrapper(`
+    <p style="color:#1e293b;font-size:15px;margin:0 0 4px;">Hi <strong>${params.toName}</strong>,</p>
+    <p style="color:#64748b;font-size:13px;margin:0 0 24px;">Here's your workload summary for the week of <strong>${params.weekStart} – ${params.weekEnd}</strong>.</p>
+
+    <!-- Key metrics grid -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin:0 0 20px;">
+      ${[
+        { label: 'Work',     value: `${params.workHours.toFixed(1)}h`,    color: workColor },
+        { label: 'Overtime', value: `${params.overtimeHours.toFixed(1)}h`, color: overtimeColor },
+        { label: 'Meetings', value: `${params.meetingHours.toFixed(1)}h`,  color: '#f59e0b' },
+        { label: 'Focus',    value: `${params.focusHours.toFixed(1)}h`,    color: '#6366f1' },
+      ].map(m => `
+        <div style="background:#f8fafc;border-radius:8px;padding:12px;text-align:center;">
+          <p style="color:${m.color};font-size:22px;font-weight:800;margin:0;line-height:1;">${m.value}</p>
+          <p style="color:#64748b;font-size:11px;margin:4px 0 0;">${m.label}</p>
+        </div>
+      `).join('')}
+    </div>
+
+    ${riskSection}
+    ${burnoutSection}
+    ${offDaySection}
+
+    <p style="color:#64748b;font-size:13px;margin:0;">
+      View your full analytics, manage risk alerts, and plan your week at
+      <a href="http://localhost:3000" style="color:#2563eb;">SmartCol AI</a>.
+    </p>
+  `);
+
+  await deliver('weekly_digest', params.toEmail, params.toName, subject, html, {
+    type:     'Weekly Digest',
+    Week:     `${params.weekStart} – ${params.weekEnd}`,
+    Work:     `${params.workHours.toFixed(1)}h (${params.overtimeHours.toFixed(1)}h OT)`,
+    Risks:    params.activeRisks > 0 ? `${params.activeRisks} active` : 'none',
+    Burnout:  params.burnoutScore !== null ? `${params.burnoutScore}/100 (${params.burnoutLevel})` : 'no score',
+  });
+
+  await markTriggered('weekly_digest');
+}
+
 // ── Test Alert ─────────────────────────────────────────────────────────────────
 
 export async function sendTestAlert(toEmail: string, toName: string): Promise<void> {

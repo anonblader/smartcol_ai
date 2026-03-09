@@ -204,7 +204,7 @@ function EmailAlertsCard() {
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {items.map((s: any) => {
-                    const isFuture  = s.alert_key === 'weekly_digest';
+                    const isFuture  = false; // weekly_digest is now fully implemented
                     const isToggling = toggling === s.alert_key;
 
                     return (
@@ -236,10 +236,6 @@ function EmailAlertsCard() {
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                               <Typography variant="body2" fontWeight={600}>{s.alert_name}</Typography>
-                              {isFuture && (
-                                <Chip label="Coming soon" size="small"
-                                  sx={{ height: 16, fontSize: 9, background: '#f1f5f9', color: '#64748b' }} />
-                              )}
                               {!isFuture && s.enabled && (
                                 <Chip label="ON" size="small"
                                   sx={{ height: 16, fontSize: 9, fontWeight: 700, background: `${catCfg.color}20`, color: catCfg.color }} />

@@ -1,7 +1,7 @@
 /**
  * Scheduler Service
  *
- * Manages two background jobs using node-cron:
+ * Manages three background jobs using node-cron:
  *
  * 1. Analytics Pipeline  (every 30 min)
  *    For every user that has calendar events:
@@ -10,6 +10,10 @@
  * 2. Calendar Sync       (every 2 hours)
  *    For every user with a valid, non-expired Graph OAuth token:
  *    sync calendar → full pipeline (classify → workload → risks → ML)
+ *
+ * 3. Weekly Digest       (Monday 08:00)
+ *    Sends each user a weekly workload summary email with metrics,
+ *    risk count, burnout score, and off-day balance.
  */
 
 import cron, { ScheduledTask } from 'node-cron';
@@ -19,6 +23,7 @@ import { computeWorkload }       from './analytics.service';
 import { detectRisks }           from './risks.service';
 import { runMLPredictions }      from './ml-prediction.service';
 import { syncCalendarEvents }    from './calendar-sync.service';
+import { sendWeeklyDigestAlert } from './email-alerts.service';
 import { logger }                from '../config/monitoring.config';
 
 // ── Job status tracking (in-memory) ───────────────────────────────────────────
@@ -67,6 +72,20 @@ const jobs: Record<string, JobStatus> = {
     errors:          [],
     nextRun:         null,
   },
+  weeklyDigest: {
+    name:            'Weekly Digest Email',
+    schedule:        '0 8 * * 1',
+    humanSchedule:   'Monday at 08:00',
+    enabled:         true,
+    running:         false,
+    lastRun:         null,
+    lastRunStatus:   'never',
+    lastRunDuration: null,
+    usersProcessed:  0,
+    usersSkipped:    0,
+    errors:          [],
+    nextRun:         null,
+  },
 };
 
 /** Estimate the next run time by adding the interval to now. */
@@ -79,6 +98,14 @@ function estimateNextRun(schedule: string): string {
   }
   if (schedule === '0 */2 * * *') {
     return new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+  }
+  if (schedule === '0 8 * * 1') {
+    // Next Monday 08:00
+    const next = new Date(now);
+    const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7;
+    next.setUTCDate(now.getUTCDate() + daysUntilMonday);
+    next.setUTCHours(8, 0, 0, 0);
+    return next.toISOString();
   }
   return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
 }
@@ -230,12 +257,155 @@ async function runCalendarSync(): Promise<void> {
   }
 }
 
+// ── Weekly Digest Job ─────────────────────────────────────────────────────────
+
+/**
+ * Weekly Digest Job — Monday 08:00
+ * Sends each user a summary of their previous week's workload,
+ * risk count, burnout score, and off-day balance.
+ */
+async function runWeeklyDigest(): Promise<void> {
+  const status = jobs['weeklyDigest']!;
+  if (status.running) {
+    logger.warn('[Scheduler] Weekly digest already running — skipping');
+    return;
+  }
+
+  status.running        = true;
+  status.errors         = [];
+  status.usersProcessed = 0;
+  status.usersSkipped   = 0;
+  const start           = Date.now();
+  logger.info('[Scheduler] Weekly digest started');
+
+  try {
+    // ISO week start for the PREVIOUS week (Mon–Sun)
+    const now       = new Date();
+    const dayOfWeek = now.getUTCDay() || 7;             // 1=Mon … 7=Sun
+    const thisMonday = new Date(now);
+    thisMonday.setUTCDate(now.getUTCDate() - dayOfWeek + 1);
+    thisMonday.setUTCHours(0, 0, 0, 0);
+
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
+    const lastSunday = new Date(thisMonday);
+    lastSunday.setUTCDate(thisMonday.getUTCDate() - 1);
+
+    const weekStart = lastMonday.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+    const weekEnd   = lastSunday.toLocaleDateString('en-GB', { month: 'short', day: 'numeric', year: 'numeric' });
+    const weekStartStr = lastMonday.toISOString().split('T')[0]!;
+
+    // Fetch all users
+    const users = await db.queryMany<{ id: string; email: string; display_name: string }>(
+      `SELECT id, email, display_name FROM users WHERE is_active = true ORDER BY display_name`
+    );
+
+    for (const user of users) {
+      try {
+        // Last week's workload
+        const weekly = await db.queryOne<{
+          work_minutes: number; overtime_minutes: number;
+          meeting_minutes: number; total_events: number;
+        }>(
+          `SELECT work_minutes, overtime_minutes, meeting_minutes, total_events
+           FROM weekly_workload
+           WHERE user_id = $1 AND week_start_date = $2`,
+          [user.id, weekStartStr]
+        );
+
+        // Skip users with no data for last week
+        if (!weekly || Number(weekly.work_minutes) === 0) {
+          status.usersSkipped++;
+          continue;
+        }
+
+        // Focus minutes — aggregate from daily_workload for the week
+        const focusRow = await db.queryOne<{ focus_minutes: number }>(
+          `SELECT COALESCE(SUM(focus_minutes), 0) AS focus_minutes
+           FROM daily_workload
+           WHERE user_id = $1 AND date >= $2 AND date < $3`,
+          [user.id, weekStartStr, weekStartStr.replace(/\d{4}-\d{2}-\d{2}/, thisMonday.toISOString().split('T')[0]!)]
+        );
+
+        // Active risks
+        const risks = await db.queryMany<{ title: string }>(
+          `SELECT ra.title FROM risk_alerts ra
+           WHERE ra.user_id = $1 AND ra.status IN ('active','acknowledged')
+           ORDER BY ra.score DESC LIMIT 5`,
+          [user.id]
+        );
+
+        // Latest burnout score
+        const burnout = await db.queryOne<{ score: number; level: string }>(
+          `SELECT score, level FROM burnout_scores
+           WHERE user_id = $1 ORDER BY score_date DESC LIMIT 1`,
+          [user.id]
+        );
+
+        // Off-day balance
+        const earned = await db.queryOne<{ earned: number; used: number }>(
+          `SELECT
+             COUNT(*) FILTER (WHERE status = 'accepted') AS used,
+             (SELECT COUNT(*) FROM offday_recommendations
+              WHERE user_id = $1 AND status != 'expired') AS earned
+           FROM offday_recommendations WHERE user_id = $1`,
+          [user.id]
+        );
+        const balance = Math.max(0, Number(earned?.earned ?? 0) - Number(earned?.used ?? 0));
+
+        await sendWeeklyDigestAlert({
+          toEmail:       user.email,
+          toName:        user.display_name || user.email,
+          weekStart,
+          weekEnd,
+          workHours:     Number(weekly.work_minutes) / 60,
+          overtimeHours: Number(weekly.overtime_minutes) / 60,
+          meetingHours:  Number(weekly.meeting_minutes) / 60,
+          focusHours:    Number(focusRow?.focus_minutes ?? 0) / 60,
+          activeRisks:   risks.length,
+          riskNames:     risks.map(r => r.title),
+          burnoutScore:  burnout ? Number(burnout.score) : null,
+          burnoutLevel:  burnout?.level ?? null,
+          offDayBalance: balance,
+        });
+
+        status.usersProcessed++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`[Scheduler] Weekly digest failed for ${user.display_name}`, { error: msg });
+        status.errors.push(`${user.display_name}: ${msg}`);
+        status.usersSkipped++;
+      }
+    }
+
+    status.lastRunStatus = status.errors.length === 0 ? 'success'
+      : status.usersProcessed > 0 ? 'partial' : 'failed';
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[Scheduler] Weekly digest error', { error: msg });
+    status.errors.push(msg);
+    status.lastRunStatus = 'failed';
+  } finally {
+    status.running         = false;
+    status.lastRun         = new Date().toISOString();
+    status.lastRunDuration = Date.now() - start;
+    status.nextRun         = estimateNextRun(status.schedule);
+    logger.info('[Scheduler] Weekly digest finished', {
+      usersProcessed: status.usersProcessed,
+      usersSkipped:   status.usersSkipped,
+      durationMs:     status.lastRunDuration,
+      status:         status.lastRunStatus,
+    });
+  }
+}
+
 // ── Scheduler lifecycle ────────────────────────────────────────────────────────
 
 let taskPipeline: ScheduledTask | null  = null;
 let taskCalSync:  ScheduledTask | null  = null;
+let taskDigest:   ScheduledTask | null  = null;
 
-/** Start both scheduled jobs. Called once from server.ts on startup. */
+/** Start all three scheduled jobs. Called once from server.ts on startup. */
 export function startScheduler(): void {
   logger.info('[Scheduler] Starting background jobs');
 
@@ -257,13 +427,24 @@ export function startScheduler(): void {
     }
   });
 
+  // Weekly digest — Monday 08:00
+  taskDigest = cron.schedule('0 8 * * 1', () => {
+    if (jobs['weeklyDigest']!.enabled) {
+      runWeeklyDigest().catch((err) =>
+        logger.error('[Scheduler] Unhandled digest error', { error: err })
+      );
+    }
+  });
+
   // Set initial next-run estimates
   jobs['analyticsPipeline']!.nextRun = estimateNextRun('*/30 * * * *');
   jobs['calendarSync']!.nextRun      = estimateNextRun('0 */2 * * *');
+  jobs['weeklyDigest']!.nextRun      = estimateNextRun('0 8 * * 1');
 
   logger.info('[Scheduler] Background jobs registered', {
     analyticsPipeline: jobs['analyticsPipeline']!.schedule,
     calendarSync:      jobs['calendarSync']!.schedule,
+    weeklyDigest:      jobs['weeklyDigest']!.schedule,
   });
 }
 
@@ -271,6 +452,7 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   taskPipeline?.stop();
   taskCalSync?.stop();
+  taskDigest?.stop();
   logger.info('[Scheduler] Background jobs stopped');
 }
 
@@ -290,6 +472,11 @@ export function triggerJob(jobKey: string): { success: boolean; message: string 
     if (jobs['calendarSync']!.running) return { success: false, message: 'Job already running' };
     runCalendarSync().catch(() => {});
     return { success: true, message: 'Calendar sync triggered' };
+  }
+  if (jobKey === 'weeklyDigest') {
+    if (jobs['weeklyDigest']!.running) return { success: false, message: 'Job already running' };
+    runWeeklyDigest().catch(() => {});
+    return { success: true, message: 'Weekly digest triggered' };
   }
   return { success: false, message: `Unknown job: ${jobKey}` };
 }

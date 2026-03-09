@@ -540,7 +540,7 @@ It integrates with Microsoft Outlook to provide:
         summary: 'Manually trigger a background job',
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', properties: { jobKey: { type: 'string', enum: ['analyticsPipeline', 'calendarSync'] } } } } },
+          content: { 'application/json': { schema: { type: 'object', properties: { jobKey: { type: 'string', enum: ['analyticsPipeline', 'calendarSync', 'weeklyDigest'] } } } } },
         },
         responses: { 200: { description: 'Job triggered' }, 409: { description: 'Job already running' }, 401: { description: 'Not admin' } },
       },
