@@ -37,6 +37,13 @@ PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f ~/Desktop/Capstone/Project/smartcol_ai/database/migrations/004_classification_feedback.sql
 ```
 
+After running migrations, install dependencies for the backend and frontend (first time only):
+
+```bash
+cd ~/Desktop/Capstone/Project/smartcol_ai/backend && npm install
+cd ~/Desktop/Capstone/Project/smartcol_ai/frontend && npm install
+```
+
 You only need to do this once. On subsequent starts, skip directly to Step 1.
 
 ---
