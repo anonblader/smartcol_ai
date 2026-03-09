@@ -38,8 +38,9 @@ export async function correct(req: Request, res: Response): Promise<void> {
 /** GET /api/feedback/stats — feedback statistics for the session user */
 export async function stats(req: Request, res: Response): Promise<void> {
   try {
-    const userId = (req.query.userId as string) || req.session.user_id;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const sessionUserId = req.session.user_id;
+    if (!sessionUserId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const userId = (req.query.userId as string) || sessionUserId;
 
     const data = await getFeedbackStats(userId);
     res.json(data);
@@ -52,8 +53,9 @@ export async function stats(req: Request, res: Response): Promise<void> {
 /** GET /api/feedback/events — classified events list with correction state */
 export async function events(req: Request, res: Response): Promise<void> {
   try {
-    const userId = (req.query.userId as string) || req.session.user_id;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const sessionUserId = req.session.user_id;
+    if (!sessionUserId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const userId = (req.query.userId as string) || sessionUserId;
 
     const limit  = Math.min(Number(req.query.limit) || 50, 200);
     const data   = await getClassifiedEvents(userId, limit);

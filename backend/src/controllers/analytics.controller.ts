@@ -10,13 +10,15 @@ import { db } from '../services/database.client';
 import { logger } from '../config/monitoring.config';
 
 /**
- * Resolve which userId to use:
- * - If ?userId= is provided in the query, use that (allows viewing any user's analytics)
- * - Otherwise fall back to the session user
- * Returns null if neither is available.
+ * Resolve which userId to use.
+ * Session is REQUIRED — ?userId= query param alone is not sufficient (prevents IDOR).
+ * - Session user → can only view their own data (returns session user_id)
+ * - Admin session + ?userId= → can view any user's data
  */
 function resolveUserId(req: Request): string | null {
-  return (req.query.userId as string) || req.session.user_id || null;
+  const sessionUserId = req.session.user_id;
+  if (!sessionUserId) return null;                          // Must be authenticated
+  return (req.query.userId as string) || sessionUserId;    // userId only honoured when logged in
 }
 
 /**

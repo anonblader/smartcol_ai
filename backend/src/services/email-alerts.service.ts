@@ -37,6 +37,17 @@ function isSmtpConfigured(): boolean {
   return !!(config.email.user && config.email.pass);
 }
 
+/** Escape HTML special characters to prevent email injection / XSS in email clients. */
+function esc(str: string | null | undefined): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;')
+    .replace(/'/g,  '&#x27;');
+}
+
 /**
  * Decode Microsoft External UPN to a real email address.
  *
@@ -179,27 +190,27 @@ export async function triggerRiskDetectedAlert(params: {
   if (!(await isAlertEnabled('risk_detected'))) return;
 
   const colour = SEV_COLOR[params.severity] ?? '#6b7280';
-  const subject = `[SmartCol AI] ⚠️ New ${params.severity.toUpperCase()} Risk: ${params.riskTitle}`;
+  const subject = `[SmartCol AI] ⚠️ New ${params.severity.toUpperCase()} Risk: ${esc(params.riskTitle)}`;
   const html = emailWrapper(`
-    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${params.toName}</strong>,</p>
+    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${esc(params.toName)}</strong>,</p>
     <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
       SmartCol AI has detected a new workload risk on your account that requires your attention.
     </p>
     <div style="border-left:4px solid ${colour};background:${colour}10;padding:16px 20px;border-radius:0 6px 6px 0;margin:0 0 20px;">
       <span style="background:${colour};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;text-transform:uppercase;">${params.severity}</span>
-      <strong style="color:#1e293b;font-size:14px;display:block;margin:8px 0 4px;">${params.riskTitle}</strong>
-      <p style="color:#475569;font-size:13px;margin:0;">${params.riskDesc}</p>
+      <strong style="color:#1e293b;font-size:14px;display:block;margin:8px 0 4px;">${esc(params.riskTitle)}</strong>
+      <p style="color:#475569;font-size:13px;margin:0;">${esc(params.riskDesc)}</p>
     </div>
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:16px 20px;margin:0 0 16px;">
       <p style="color:#065f46;font-size:13px;font-weight:600;margin:0 0 6px;">💡 Recommendation</p>
-      <p style="color:#065f46;font-size:13px;margin:0;">${params.recommendation}</p>
+      <p style="color:#065f46;font-size:13px;margin:0;">${esc(params.recommendation)}</p>
     </div>
     <p style="color:#64748b;font-size:13px;">Log in to SmartCol AI to view your full workload analysis and manage this alert.</p>
   `);
 
   await deliver('risk_detected', params.toEmail, params.toName, subject, html, {
     type:     'Risk Detected',
-    Risk:     `[${params.severity.toUpperCase()}] ${params.riskTitle}`,
+    Risk:     `[${params.severity.toUpperCase()}] ${esc(params.riskTitle)}`,
     Message:  params.riskDesc.slice(0, 80),
   });
 
@@ -220,28 +231,28 @@ export async function triggerRiskAcknowledgedAlert(params: {
   if (!(await isAlertEnabled('risk_acknowledged'))) return;
 
   const colour  = SEV_COLOR[params.severity] ?? '#6b7280';
-  const subject = `[SmartCol AI] ${params.adminName} has acknowledged your workload risk`;
+  const subject = `[SmartCol AI] ${esc(params.adminName)} has acknowledged your workload risk`;
   const html = emailWrapper(`
-    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${params.toName}</strong>,</p>
+    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${esc(params.toName)}</strong>,</p>
     <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
-      Your manager <strong>${params.adminName}</strong> has reviewed and acknowledged a workload risk
+      Your manager <strong>${esc(params.adminName)}</strong> has reviewed and acknowledged a workload risk
       flagged on your account. They are aware of the situation and monitoring it.
     </p>
     <div style="border-left:4px solid ${colour};background:${colour}10;padding:16px 20px;border-radius:0 6px 6px 0;margin:0 0 20px;">
       <span style="background:${colour};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;text-transform:uppercase;">${params.severity}</span>
-      <strong style="color:#1e293b;font-size:14px;display:block;margin:8px 0 4px;">${params.riskTitle}</strong>
-      <p style="color:#475569;font-size:13px;margin:0;">${params.riskDesc}</p>
+      <strong style="color:#1e293b;font-size:14px;display:block;margin:8px 0 4px;">${esc(params.riskTitle)}</strong>
+      <p style="color:#475569;font-size:13px;margin:0;">${esc(params.riskDesc)}</p>
     </div>
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:16px 20px;margin:0 0 16px;">
       <p style="color:#065f46;font-size:13px;font-weight:600;margin:0 0 6px;">💡 Recommendation</p>
-      <p style="color:#065f46;font-size:13px;margin:0;">${params.recommendation}</p>
+      <p style="color:#065f46;font-size:13px;margin:0;">${esc(params.recommendation)}</p>
     </div>
   `);
 
   await deliver('risk_acknowledged', params.toEmail, params.toName, subject, html, {
     type:      'Risk Acknowledged',
     Manager:   params.adminName,
-    Risk:      `[${params.severity.toUpperCase()}] ${params.riskTitle}`,
+    Risk:      `[${params.severity.toUpperCase()}] ${esc(params.riskTitle)}`,
   });
 
   await markTriggered('risk_acknowledged');
@@ -259,16 +270,16 @@ export async function triggerRiskDismissedAlert(params: {
   if (!(await isAlertEnabled('risk_dismissed'))) return;
 
   const colour  = SEV_COLOR[params.severity] ?? '#6b7280';
-  const subject = `[SmartCol AI] ${params.adminName} has dismissed your workload risk alert`;
+  const subject = `[SmartCol AI] ${esc(params.adminName)} has dismissed your workload risk alert`;
   const html = emailWrapper(`
-    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${params.toName}</strong>,</p>
+    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${esc(params.toName)}</strong>,</p>
     <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
-      Your manager <strong>${params.adminName}</strong> has dismissed the following workload risk alert.
+      Your manager <strong>${esc(params.adminName)}</strong> has dismissed the following workload risk alert.
       No further action is required from your side for this item.
     </p>
     <div style="border-left:4px solid ${colour};background:${colour}10;padding:16px 20px;border-radius:0 6px 6px 0;margin:0 0 20px;">
       <span style="background:${colour};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;text-transform:uppercase;">${params.severity}</span>
-      <strong style="color:#1e293b;font-size:14px;display:block;margin:8px 0 4px;">${params.riskTitle}</strong>
+      <strong style="color:#1e293b;font-size:14px;display:block;margin:8px 0 4px;">${esc(params.riskTitle)}</strong>
     </div>
     <p style="color:#64748b;font-size:13px;">Continue logging in to SmartCol AI to keep track of your workload health.</p>
   `);
@@ -276,7 +287,7 @@ export async function triggerRiskDismissedAlert(params: {
   await deliver('risk_dismissed', params.toEmail, params.toName, subject, html, {
     type:    'Risk Dismissed',
     Manager: params.adminName,
-    Risk:    `[${params.severity.toUpperCase()}] ${params.riskTitle}`,
+    Risk:    `[${params.severity.toUpperCase()}] ${esc(params.riskTitle)}`,
   });
 
   await markTriggered('risk_dismissed');
@@ -295,11 +306,11 @@ export async function triggerBurnoutWarningAlert(params: {
 
   const subject = `[SmartCol AI] 🔥 Burnout Risk Score: ${params.score}/100 — ${params.level.toUpperCase()}`;
   const factorList = params.factors
-    .map(f => `<li style="color:#475569;font-size:13px;margin-bottom:4px;">${f}</li>`)
+    .map(f => `<li style="color:#475569;font-size:13px;margin-bottom:4px;">${esc(f)}</li>`)
     .join('');
 
   const html = emailWrapper(`
-    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${params.toName}</strong>,</p>
+    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${esc(params.toName)}</strong>,</p>
     <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
       Your SmartCol AI burnout risk score has risen to a concerning level. Please review your workload and
       consider speaking with your manager.
@@ -341,15 +352,15 @@ export async function triggerHighWorkloadDayAlert(params: {
 
   const hours    = (params.workMinutes / 60).toFixed(1);
   const overtimeH = (params.overtime / 60).toFixed(1);
-  const subject  = `[SmartCol AI] ⏱️ High Workload Day: ${hours}h on ${params.date}`;
+  const subject  = `[SmartCol AI] ⏱️ High Workload Day: ${hours}h on ${esc(params.date)}`;
   const html = emailWrapper(`
-    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${params.toName}</strong>,</p>
+    <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi <strong>${esc(params.toName)}</strong>,</p>
     <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
       SmartCol AI detected an exceptionally long working day on your calendar.
       Consistently working beyond standard hours increases burnout risk.
     </p>
     <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:20px;margin:0 0 20px;">
-      <p style="color:#92400e;font-size:13px;font-weight:600;margin:0 0 8px;">📅 ${params.date}</p>
+      <p style="color:#92400e;font-size:13px;font-weight:600;margin:0 0 8px;">📅 ${esc(params.date)}</p>
       <div style="display:flex;gap:24px;flex-wrap:wrap;">
         <div>
           <p style="color:#92400e;font-size:32px;font-weight:800;margin:0;">${hours}h</p>
@@ -400,7 +411,7 @@ export interface WeeklyDigestParams {
 export async function sendWeeklyDigestAlert(params: WeeklyDigestParams): Promise<void> {
   if (!(await isAlertEnabled('weekly_digest'))) return;
 
-  const subject = `[SmartCol AI] 📊 Your Weekly Workload Summary — ${params.weekStart} to ${params.weekEnd}`;
+  const subject = `[SmartCol AI] 📊 Your Weekly Workload Summary — ${esc(params.weekStart)} to ${esc(params.weekEnd)}`;
 
   // Colour helpers
   const workColor    = params.workHours > 50 ? '#ef4444' : params.workHours > 40 ? '#f59e0b' : '#10b981';
@@ -444,8 +455,8 @@ export async function sendWeeklyDigestAlert(params: WeeklyDigestParams): Promise
     : '';
 
   const html = emailWrapper(`
-    <p style="color:#1e293b;font-size:15px;margin:0 0 4px;">Hi <strong>${params.toName}</strong>,</p>
-    <p style="color:#64748b;font-size:13px;margin:0 0 24px;">Here's your workload summary for the week of <strong>${params.weekStart} – ${params.weekEnd}</strong>.</p>
+    <p style="color:#1e293b;font-size:15px;margin:0 0 4px;">Hi <strong>${esc(params.toName)}</strong>,</p>
+    <p style="color:#64748b;font-size:13px;margin:0 0 24px;">Here's your workload summary for the week of <strong>${esc(params.weekStart)} – ${esc(params.weekEnd)}</strong>.</p>
 
     <!-- Key metrics grid -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin:0 0 20px;">
@@ -474,7 +485,7 @@ export async function sendWeeklyDigestAlert(params: WeeklyDigestParams): Promise
 
   await deliver('weekly_digest', params.toEmail, params.toName, subject, html, {
     type:     'Weekly Digest',
-    Week:     `${params.weekStart} – ${params.weekEnd}`,
+    Week:     `${esc(params.weekStart)} – ${esc(params.weekEnd)}`,
     Work:     `${params.workHours.toFixed(1)}h (${params.overtimeHours.toFixed(1)}h OT)`,
     Risks:    params.activeRisks > 0 ? `${params.activeRisks} active` : 'none',
     Burnout:  params.burnoutScore !== null ? `${params.burnoutScore}/100 (${params.burnoutLevel})` : 'no score',

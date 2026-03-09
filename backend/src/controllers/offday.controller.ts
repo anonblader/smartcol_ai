@@ -29,8 +29,9 @@ async function getSessionUser(req: Request) {
 /** POST /api/offday/generate — generate recommendations for session user */
 export async function generate(req: Request, res: Response): Promise<void> {
   try {
-    const userId = (req.query.userId as string) || req.session.user_id;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const sessionUserId = req.session.user_id;
+    if (!sessionUserId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const userId = (req.query.userId as string) || sessionUserId;
 
     logger.info('Generating off-day recommendations', { userId });
     const result = await generateRecommendations(userId);
@@ -54,8 +55,9 @@ export async function generate(req: Request, res: Response): Promise<void> {
 /** GET /api/offday/pending — get pending recommendations */
 export async function getPending(req: Request, res: Response): Promise<void> {
   try {
-    const userId = (req.query.userId as string) || req.session.user_id;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const sessionUserId = req.session.user_id;
+    if (!sessionUserId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const userId = (req.query.userId as string) || sessionUserId;
 
     const recommendations = await getPendingRecommendations(userId);
     res.json({ recommendations });
@@ -68,8 +70,9 @@ export async function getPending(req: Request, res: Response): Promise<void> {
 /** GET /api/offday/all — get all recommendations (any status) */
 export async function getAll(req: Request, res: Response): Promise<void> {
   try {
-    const userId = (req.query.userId as string) || req.session.user_id;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const sessionUserId = req.session.user_id;
+    if (!sessionUserId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const userId = (req.query.userId as string) || sessionUserId;
 
     const recommendations = await getAllRecommendations(userId);
     res.json({ recommendations });
@@ -116,8 +119,9 @@ export async function reject(req: Request, res: Response): Promise<void> {
 /** GET /api/offday/balance — entitlement balance for session user (or ?userId= for admin) */
 export async function getBalance(req: Request, res: Response): Promise<void> {
   try {
-    const userId = (req.query.userId as string) || req.session.user_id;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const sessionUserId = req.session.user_id;
+    if (!sessionUserId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const userId = (req.query.userId as string) || sessionUserId;
 
     const balance = await calculateOffDayBalance(userId);
     res.json({ balance });

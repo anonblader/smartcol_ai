@@ -2,6 +2,8 @@ import express from 'express';
 import session from 'express-session';
 import cors from 'cors';
 import path from 'path';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.config';
 import { logger } from './config/monitoring.config';
@@ -21,10 +23,38 @@ import { requireAdmin }    from './middleware/admin.middleware';
 
 const app = express();
 
+// ── Fix 2: Security headers via Helmet ────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled to allow Swagger UI inline styles
+}));
+
+// ── CORS ──────────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true
+  credentials: true,
 }));
+
+// ── Fix 3: Rate limiting ──────────────────────────────────────────────────────
+// General API limiter: 100 requests per 15 minutes per IP
+const apiLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000,
+  max:             100,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { error: 'TooManyRequests', message: 'Too many requests — please try again later.' },
+});
+
+// Stricter limiter for auth endpoints: 10 requests per 15 minutes
+const authLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000,
+  max:             10,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { error: 'TooManyRequests', message: 'Too many authentication attempts.' },
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/auth/', authLimiter);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -32,10 +62,17 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
+// ── Fix 1: Secure session cookie flags ───────────────────────────────────────
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'dev-secret',
-  resave: false,
-  saveUninitialized: false
+  secret:            process.env.SESSION_SECRET || 'dev-secret',
+  resave:            false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,                                              // Prevent JS access to cookie
+    secure:   process.env.NODE_ENV === 'production',            // HTTPS-only in production
+    sameSite: 'strict',                                         // CSRF protection
+    maxAge:   8 * 60 * 60 * 1000,                              // 8-hour session lifetime
+  },
 }));
 
 // Healthcheck
