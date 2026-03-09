@@ -1,15 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
 import {
-  Box,
-  CircularProgress,
-  Typography,
-  Button,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Divider,
+  Box, CircularProgress, Typography, Button,
+  List, ListItemButton, ListItemIcon, ListItemText,
+  Divider, Alert,
 } from '@mui/material';
 import DashboardIcon    from '@mui/icons-material/Dashboard';
 import BarChartIcon     from '@mui/icons-material/BarChart';
@@ -40,15 +34,29 @@ const navItems = [
 ];
 
 function LoginPage() {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
   const handleLogin = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await authApi.getConnectUrl();
       const authUrl = res.data.authUrl || res.data.url || res.data;
       if (typeof authUrl === 'string') {
         window.location.href = authUrl;
+      } else {
+        setError('Could not get sign-in URL. Please try again.');
       }
-    } catch (err) {
-      console.error('Failed to get auth URL', err);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 429) {
+        setError('Too many sign-in attempts. Please wait a minute and try again.');
+      } else {
+        setError('Sign-in failed. Make sure the backend is running on port 3001.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -96,11 +104,19 @@ function LoginPage() {
           Intelligent workload analytics for your Microsoft Outlook calendar.
           Sign in to get started.
         </Typography>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2, textAlign: 'left', fontSize: 13 }}>
+            {error}
+          </Alert>
+        )}
+
         <Button
           variant="contained"
           size="large"
           fullWidth
-          startIcon={<MicrosoftIcon />}
+          disabled={loading}
+          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <MicrosoftIcon />}
           onClick={handleLogin}
           sx={{
             background: PRIMARY,
@@ -109,7 +125,7 @@ function LoginPage() {
             '&:hover': { background: '#1d4ed8' },
           }}
         >
-          Sign in with Microsoft
+          {loading ? 'Redirecting…' : 'Sign in with Microsoft'}
         </Button>
       </Box>
     </Box>

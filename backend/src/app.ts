@@ -35,22 +35,25 @@ app.use(cors({
 }));
 
 // ── Fix 3: Rate limiting ──────────────────────────────────────────────────────
-// General API limiter: 100 requests per 15 minutes per IP
+const isDev = process.env.NODE_ENV !== 'production';
+
+// General API limiter: 200 req / 15 min (dev), 100 req / 15 min (prod)
 const apiLimiter = rateLimit({
   windowMs:        15 * 60 * 1000,
-  max:             100,
+  max:             isDev ? 500 : 100,
   standardHeaders: true,
   legacyHeaders:   false,
   message:         { error: 'TooManyRequests', message: 'Too many requests — please try again later.' },
 });
 
-// Stricter limiter for auth endpoints: 10 requests per 15 minutes
+// Auth limiter: generous in dev (OAuth flows involve multiple redirects),
+// stricter in production to prevent brute force
 const authLimiter = rateLimit({
   windowMs:        15 * 60 * 1000,
-  max:             10,
+  max:             isDev ? 100 : 20,
   standardHeaders: true,
   legacyHeaders:   false,
-  message:         { error: 'TooManyRequests', message: 'Too many authentication attempts.' },
+  message:         { error: 'TooManyRequests', message: 'Too many authentication attempts — please wait before trying again.' },
 });
 
 app.use('/api/', apiLimiter);
