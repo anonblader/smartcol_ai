@@ -1,36 +1,55 @@
 # SmartCol AI — Startup Guide
 
-A step-by-step guide to get SmartCol AI running after a fresh reboot.
+A step-by-step guide to get all SmartCol AI services running after a fresh reboot.
 
 ---
 
-## What You Need Running
+## Services Overview
 
 | Service | Port | What it does |
 |---|---|---|
-| PostgreSQL (Docker) | 5432 | Database |
-| Backend (Node.js) | 3001 | API + test pages |
-| Classification Service (Python) | 8000 | AI event classifier |
-| Frontend (React) | 3000 | Web app |
+| PostgreSQL | 5432 | Primary database (17 tables) |
+| Backend (Node.js) | 3001 | REST API + background job scheduler |
+| Classification Service (Python) | 8000 | AI classifier + ML workload/burnout models |
+| Frontend (React) | 3000 | Web application |
+
+> **Start order matters:** PostgreSQL → Backend → Classification Service → Frontend
 
 ---
 
-## Step 1 — Start PostgreSQL (Docker)
+## First-Time Setup Only
 
-Open a terminal and run:
+Run both database migrations before starting the app for the first time:
+
+```bash
+# Replace <password> with your PostgreSQL password (e.g. fly1ngC()wN0vemberR@1n)
+
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
+  -f ~/Desktop/Capstone/Project/smartcol_ai/database/migrations/001_initial_schema.sql
+
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
+  -f ~/Desktop/Capstone/Project/smartcol_ai/database/migrations/002_ml_predictions.sql
+```
+
+You only need to do this once. On subsequent starts, skip directly to Step 1.
+
+---
+
+## Step 1 — Start PostgreSQL
+
+### Option A: Docker (if you set it up with Docker)
 
 ```bash
 docker start smartcol-postgres
 ```
 
-Verify it's running:
-
+Verify:
 ```bash
 docker ps | grep smartcol-postgres
+# Should show: Up X seconds/minutes
 ```
 
-You should see a line with `Up X seconds/minutes`. If it says the container doesn't exist, run:
-
+If the container no longer exists, recreate it:
 ```bash
 docker run -d \
   --name smartcol-postgres \
@@ -40,23 +59,56 @@ docker run -d \
   postgres:15
 ```
 
+### Option B: Native PostgreSQL (if installed via Homebrew / system package)
+
+```bash
+# macOS (Homebrew)
+brew services start postgresql@15
+
+# Or using pg_ctl directly
+pg_ctl -D /usr/local/var/postgresql@15 start
+```
+
+### Verify PostgreSQL is ready
+
+```bash
+pg_isready -h localhost -p 5432
+# Expected: localhost:5432 - accepting connections
+```
+
 ---
 
 ## Step 2 — Start the Backend
 
-Open a **new terminal tab**, navigate to the backend folder, and start the server:
+Open a **new terminal tab**:
 
 ```bash
 cd ~/Desktop/Capstone/Project/smartcol_ai/backend
+```
+
+**For development** (auto-restarts on file changes):
+```bash
 npm run dev
+```
+
+**For production-like start** (pre-built, faster):
+```bash
+npm run build && node dist/server.js
 ```
 
 Wait until you see:
 ```
 Server listening on port 3001
+[Scheduler] Background jobs registered
+  analyticsPipeline: */30 * * * *
+  calendarSync: 0 */2 * * *
 ```
 
-**Verify:** Open `http://localhost:3001/health` in your browser — it should show `{"status":"ok"}`.
+The **background job scheduler** starts automatically with the server. Two jobs are registered:
+- **Analytics Pipeline** — runs every 30 minutes (classify → workload → risks → ML predictions)
+- **Calendar Sync** — runs every 2 hours for users with valid Microsoft 365 org tokens
+
+**Verify:** `http://localhost:3001/health` → `{"status":"ok"}`
 
 ---
 
@@ -66,7 +118,8 @@ Open a **new terminal tab**:
 
 ```bash
 cd ~/Desktop/Capstone/Project/smartcol_ai/classification-service
-venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+source venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Wait until you see:
@@ -75,11 +128,21 @@ Application startup complete.
 Uvicorn running on http://0.0.0.0:8000
 ```
 
-The ML model (`facebook/bart-large-mnli`) will load in the background — this takes about 5–10 seconds. You can check its status at `http://localhost:8000/health`.
+Three things load at startup:
+1. **Workload Predictor** (RandomForest) — trains in ~2 seconds
+2. **Burnout Scorer** (GradientBoosting) — trains in ~2 seconds
+3. **NLI Model** (`facebook/bart-large-mnli`) — loads in background (~5–10 seconds from cache)
 
-> **Note:** The ML model is cached after the first download. Subsequent starts load it from cache (faster).
+**Verify:** `http://localhost:8000/health`
+```json
+{
+  "status": "ok",
+  "ml_model": { "ready": true, "model": "facebook/bart-large-mnli" },
+  "mode": "hybrid (ml + rule-based)"
+}
+```
 
-**Verify:** Open `http://localhost:8000/health` — look for `"mode": "hybrid (ml + rule-based)"`.
+> **First run only:** The NLI model (~1.6 GB) downloads from Hugging Face. Requires internet. All subsequent starts load from local cache.
 
 ---
 
@@ -98,54 +161,93 @@ Compiled successfully!
 Local: http://localhost:3000
 ```
 
-Your browser may open automatically. If not, go to `http://localhost:3000`.
+Your browser may open automatically. If not, navigate to `http://localhost:3000`.
 
 ---
 
-## Step 5 — Log In
+## Step 5 — Log In & Load Data
 
 1. Go to `http://localhost:3000`
-2. Click **"Sign in with Microsoft"**
-3. Log in with your Microsoft account
-4. You will be redirected to the SmartCol AI dashboard automatically
+2. Click **Connect Microsoft Outlook**
+3. Sign in with your Microsoft account
+4. You will land on the **SmartCol AI Dashboard**
 
-> **Admin users** are redirected to the backend test page (`http://localhost:3001/test-auth.html`) after login.
+### Load mock data (recommended for demo)
+
+Since the Microsoft Graph API requires an organisational Microsoft 365 account, use the mock sync to populate data:
+
+1. Go to **Settings** (sidebar)
+2. Under **Mock Calendar Data**, choose a profile:
+   - **Balanced Workload** — normal schedule, no risks
+   - **Overloaded Workload** — 12.5h/day × 3 weeks, triggers all 6 risk types + burnout score 95/critical
+   - **Underloaded Workload** — minimal schedule, triggers Low Focus Time
+3. Click **Load Data** — this clears previous data then runs the full pipeline:
+   `Sync → Classify → Compute Workload → Detect Risks → ML Predictions`
+4. Once complete, navigate to **Dashboard** and **Analytics** to see results
+
+> The overloaded sync processes 54 events and takes about 60–90 seconds. The progress indicator will show "Syncing…" until complete.
 
 ---
 
 ## Quick Verification Checklist
 
-After all services are running, confirm each is healthy:
-
-| Check | Expected Result |
-|---|---|
-| `http://localhost:3001/health` | `{"status":"ok"}` |
-| `http://localhost:8000/health` | `{"status":"ok", "mode":"hybrid..."}` |
-| `http://localhost:3000` | SmartCol AI login or dashboard |
+| Check | URL | Expected |
+|---|---|---|
+| PostgreSQL | `pg_isready -h localhost -p 5432` | `accepting connections` |
+| Backend health | `http://localhost:3001/health` | `{"status":"ok"}` |
+| AI Service health | `http://localhost:8000/health` | `{"status":"ok","mode":"hybrid..."}` |
+| Frontend | `http://localhost:3000` | Login page or dashboard |
+| Scheduler | Settings → Background Jobs (admin) | Both jobs show "never" on first start |
 
 ---
 
-## Test Pages (Admin Only)
+## What You'll See After Loading Data
+
+| Page | What's shown |
+|---|---|
+| **Dashboard (personal)** | Work hours, overtime, meetings, active risk alerts, ML burnout score, 5-day workload forecast |
+| **Dashboard (admin)** | Team summary stats + one tab per engineer with full workload detail |
+| **Analytics** | Daily table, weekly summary, heatmap, time breakdown chart, workload forecast, burnout score, off-day recommendations |
+| **Risks** | Active / Ongoing / History tabs; admin can acknowledge + email engineer |
+| **Settings → Background Jobs** *(admin)* | Status of Analytics Pipeline + Calendar Sync jobs; Run Now / Pause / Resume |
+
+---
+
+## Admin vs Engineer Views
+
+The application has two roles determined by the `ADMIN_EMAILS` list in `backend/.env`:
+
+- **Admin** — sees team dashboard (tabbed members), all team risks, team off-day recommendations, background job controls, test user management
+- **Engineer** — sees own dashboard, own analytics, own risks, own off-day recommendations
+
+---
+
+## Backend Test Pages (Admin Only)
+
+Legacy HTML test pages for direct API testing (no React required):
 
 | Page | URL |
 |---|---|
 | Auth Test | `http://localhost:3001/test-auth.html` |
 | Sync Test | `http://localhost:3001/test-sync.html` |
 | Analytics Panel | `http://localhost:3001/test-analytics.html` |
-| Multi-User Test | `http://localhost:3001/test-multiuser.html` |
 
 ---
 
 ## Stopping Everything
 
-When you're done for the day:
-
 ```bash
-# Stop the Docker PostgreSQL container (data is preserved)
-docker stop smartcol-postgres
+# Stop frontend and backend: Ctrl+C in each terminal
 
-# Stop the other terminals by pressing Ctrl+C in each one
+# Stop classification service: Ctrl+C in its terminal
+
+# Stop PostgreSQL
+docker stop smartcol-postgres        # Docker
+# OR
+brew services stop postgresql@15     # Homebrew
 ```
+
+Data is preserved when PostgreSQL stops — it persists to disk.
 
 ---
 
@@ -153,18 +255,31 @@ docker stop smartcol-postgres
 
 **Port already in use:**
 ```bash
-# Find and kill process on a specific port (e.g. 3001)
-lsof -ti:3001 | xargs kill -9
+lsof -ti:3001 | xargs kill -9   # backend
+lsof -ti:8000 | xargs kill -9   # classification service
+lsof -ti:3000 | xargs kill -9   # frontend
 ```
 
-**Backend fails to start (database error):**
-Make sure Step 1 (Docker) completed successfully before starting the backend.
+**Backend fails to start — database error:**
+Make sure PostgreSQL is running and accepting connections (`pg_isready -h localhost -p 5432`) before starting the backend.
 
-**ML model fails to load:**
-The model downloads from HuggingFace on first use. Make sure you have an internet connection on first run. Subsequent starts use the local cache.
+**"relation workload_predictions does not exist":**
+Migration 002 has not been run. See [First-Time Setup Only](#first-time-setup-only) above.
 
-**Frontend shows blank / API errors:**
-Make sure both the backend (port 3001) and classification service (port 8000) are running before using the frontend.
+**Classification service crashes at startup:**
+The `venv` virtual environment may not be activated. Run `source venv/bin/activate` before `uvicorn`.
+
+**Sync shows "classified: 0, failed: 54" in backend log:**
+The classification service was not running or was still starting up when the sync triggered. Restart the classification service and run the mock sync again.
+
+**NLI model fails to load — no internet:**
+The `facebook/bart-large-mnli` model needs to download on first use (~1.6 GB). After the initial download, it loads from local cache and works offline.
+
+**Dashboard shows "—" for all stats after sync:**
+Wait a few seconds and refresh. The pipeline (classify → compute → risks → ML) may still be running. Check backend logs for `"ML predictions complete"` to confirm everything finished.
+
+**Calendar Sync background job reports failure:**
+Expected — this job requires an organisational Microsoft 365 account with admin-consented Graph API permissions. For demo use, the Analytics Pipeline job (every 30 min) handles all data refresh needs.
 
 ---
 
