@@ -11,29 +11,32 @@ import {
   ListItemText,
   Divider,
 } from '@mui/material';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import BarChartIcon from '@mui/icons-material/BarChart';
+import DashboardIcon    from '@mui/icons-material/Dashboard';
+import BarChartIcon     from '@mui/icons-material/BarChart';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import SettingsIcon from '@mui/icons-material/Settings';
-import MicrosoftIcon from '@mui/icons-material/Microsoft';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import SettingsIcon     from '@mui/icons-material/Settings';
+import MicrosoftIcon    from '@mui/icons-material/Microsoft';
+import OpenInNewIcon    from '@mui/icons-material/OpenInNew';
+import AutoFixHighIcon  from '@mui/icons-material/AutoFixHigh';
 
-import { useAuth } from './hooks/useAuth';
-import { authApi } from './services/api';
-import { Dashboard } from './pages/Dashboard';
-import { Analytics } from './pages/Analytics';
-import { Risks } from './pages/Risks';
-import { Settings } from './pages/Settings';
+import { useAuth }    from './hooks/useAuth';
+import { authApi }    from './services/api';
+import { Dashboard }  from './pages/Dashboard';
+import { Analytics }  from './pages/Analytics';
+import { Risks }      from './pages/Risks';
+import { Settings }   from './pages/Settings';
+import { Events }     from './pages/Events';
 
 const SIDEBAR_WIDTH = 240;
 const PRIMARY = '#2563eb';
 const SIDEBAR_BG = '#1e293b';
 
 const navItems = [
-  { label: 'Dashboard', path: '/', icon: <DashboardIcon /> },
+  { label: 'Dashboard', path: '/',        icon: <DashboardIcon /> },
   { label: 'Analytics', path: '/analytics', icon: <BarChartIcon /> },
-  { label: 'Risks', path: '/risks', icon: <WarningAmberIcon /> },
-  { label: 'Settings', path: '/settings', icon: <SettingsIcon /> },
+  { label: 'Risks',     path: '/risks',   icon: <WarningAmberIcon /> },
+  { label: 'Events',    path: '/events',  icon: <AutoFixHighIcon /> },
+  { label: 'Settings',  path: '/settings', icon: <SettingsIcon /> },
 ];
 
 function LoginPage() {
@@ -259,10 +262,11 @@ export default function App() {
       <Sidebar isAdmin={isAdmin} />
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/"          element={<Dashboard />} />
           <Route path="/analytics" element={<Analytics />} />
-          <Route path="/risks" element={<Risks />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/risks"     element={<Risks />} />
+          <Route path="/events"    element={<Events />} />
+          <Route path="/settings"  element={<Settings />} />
         </Routes>
       </Box>
     </Box>

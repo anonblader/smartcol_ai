@@ -80,6 +80,14 @@ export const adminApi = {
   getUsersList:     ()              => apiClient.get('/analytics/users-list'),
 };
 
+// Feedback / Active Learning API
+export const feedbackApi = {
+  getEvents:  (params?: Record<string, unknown>) => apiClient.get('/feedback/events', { params }),
+  getStats:   (userId?: string)                  => apiClient.get('/feedback/stats',  userId ? { params: { userId } } : undefined),
+  correct:    (eventId: string, correctedTypeId: number) =>
+    apiClient.post('/feedback/correct', { eventId, correctedTypeId }),
+};
+
 // Notification Settings API (admin only)
 export const notificationsApi = {
   getSettings:   ()                                   => apiClient.get('/notifications/settings'),

@@ -16,6 +16,7 @@ import offdayRoutes from './routes/offday.routes';
 import mlPredictionRoutes  from './routes/ml-prediction.routes';
 import schedulerRoutes            from './routes/scheduler.routes';
 import notificationSettingsRoutes from './routes/notification-settings.routes';
+import feedbackRoutes             from './routes/feedback.routes';
 import { requireAdmin }    from './middleware/admin.middleware';
 
 const app = express();
@@ -62,6 +63,7 @@ app.use('/api/offday', offdayRoutes);
 app.use('/api/ml',        mlPredictionRoutes);
 app.use('/api/scheduler',      requireAdmin, schedulerRoutes);
 app.use('/api/notifications',  requireAdmin, notificationSettingsRoutes);
+app.use('/api/feedback',       feedbackRoutes);
 app.use('/api/test',      requireAdmin, testRoutes);
 
 // Error logging

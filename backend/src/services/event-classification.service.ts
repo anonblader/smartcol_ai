@@ -5,10 +5,11 @@
  * AI classification service, and persists results to event_classifications.
  */
 
-import { db } from './database.client';
+import { db }              from './database.client';
 import { classifyEvents, isClassificationServiceHealthy } from './classification.client';
-import { logger } from '../config/monitoring.config';
+import { logger }          from '../config/monitoring.config';
 import { CalendarEvent, ClassificationRequest } from '../types';
+import { getUserFeedbackPatterns } from './feedback.service';
 
 export interface ClassificationResult {
   success: boolean;
@@ -56,8 +57,46 @@ export async function classifyUserEvents(userId: string): Promise<Classification
 
     logger.info('Classifying events', { userId, count: events.length });
 
+    // Load user's feedback patterns — subjects the user has already corrected.
+    // Events matching a corrected pattern are applied directly without calling the AI.
+    const feedbackPatterns = await getUserFeedbackPatterns(userId);
+    let feedbackApplied = 0;
+
+    const needsAI: CalendarEvent[] = [];
+    for (const event of events) {
+      const subjectKey = (event.subject ?? '').toLowerCase().trim();
+      const correctedTypeId = feedbackPatterns.get(subjectKey);
+
+      if (correctedTypeId) {
+        // Apply user's known correction immediately
+        await db.query(
+          `INSERT INTO event_classifications
+             (event_id, user_id, task_type_id, confidence_score, classification_method, model_version)
+           VALUES ($1, $2, $3, 0.99, 'user_feedback', 'pattern-learning-v1.0')
+           ON CONFLICT (event_id) DO UPDATE SET
+             task_type_id = EXCLUDED.task_type_id,
+             confidence_score = EXCLUDED.confidence_score,
+             classification_method = EXCLUDED.classification_method,
+             model_version = EXCLUDED.model_version,
+             updated_at = NOW()`,
+          [event.id, userId, correctedTypeId]
+        );
+        result.classified++;
+        feedbackApplied++;
+      } else {
+        needsAI.push(event);
+      }
+    }
+
+    if (feedbackApplied > 0) {
+      logger.info('Applied feedback patterns', { userId, feedbackApplied });
+    }
+
+    // Only send events without an existing correction to the AI
+    const aiEvents = needsAI;
+
     // Build classification requests
-    const requests: ClassificationRequest[] = events.map((event) => ({
+    const requests: ClassificationRequest[] = aiEvents.map((event) => ({
       event_id: event.id,
       subject: event.subject ?? '',
       body_preview: event.body_preview,
@@ -68,7 +107,13 @@ export async function classifyUserEvents(userId: string): Promise<Classification
       is_all_day: event.is_all_day,
     }));
 
-    // Classify in batch
+    if (aiEvents.length === 0) {
+      result.success = true;
+      logger.info('All events handled via feedback patterns', { userId, feedbackApplied });
+      return result;
+    }
+
+    // Classify remaining events in batch via AI
     const batchResults = await classifyEvents(requests);
 
     // Persist each result
