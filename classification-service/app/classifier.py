@@ -2,13 +2,15 @@
 Hybrid Classifier
 
 Strategy:
-  1. Try ML zero-shot classifier (facebook/bart-large-mnli)
-  2. If ML confidence >= 0.50 → use ML result  (method: 'ml_model')
-  3. If ML confidence < 0.50  → use rule-based  (method: 'rule_based')
-  4. If ML not yet loaded     → use rule-based  (method: 'rule_based')
+  1. Try rule-based first — instant, great for events with clear keywords
+  2. If rule-based confidence >= 0.72 → use rule result  (method: 'rule_based')
+  3. Otherwise, try ML zero-shot (facebook/bart-large-mnli) for ambiguous events
+  4. If ML confidence >= 0.50 → use ML result  (method: 'ml_model')
+  5. If ML not ready / low confidence → fall back to rule-based
 
-Both paths return the same ClassificationResponse shape so the backend
-integration is unchanged.
+This avoids invoking the slow NLI model for obvious events (standup, focus time,
+deadlines, etc.) and reserves it for genuinely ambiguous cases.
+Both paths return the same ClassificationResponse shape.
 """
 
 from .models import ClassificationRequest, ClassificationResponse
@@ -99,22 +101,31 @@ def _rule_based(request: ClassificationRequest) -> ClassificationResponse:
     )
 
 
+# Minimum rule-based confidence to skip ML — events above this threshold are
+# clear enough that the slow NLI model adds no value.
+RULE_CONFIDENCE_THRESHOLD = 0.72
+
+
 # ── Hybrid entry point ─────────────────────────────────────────────────────────
 
 def classify_event(request: ClassificationRequest) -> ClassificationResponse:
     """
-    Hybrid classifier: ML first, rule-based fallback.
+    Hybrid classifier: rule-based first, ML for ambiguous events only.
     """
     subject = normalize(request.subject)
     body    = normalize(request.body_preview)
     text    = f"{subject} {body}".strip()
 
-    # ── Step 1: Try ML zero-shot classifier ──────────────────────────────────
+    # ── Step 1: Try rule-based — instant, handles most known patterns ─────────
+    rule_result = _rule_based(request)
+    if rule_result.confidence_score >= RULE_CONFIDENCE_THRESHOLD:
+        return rule_result
+
+    # ── Step 2: Rule-based uncertain — try ML for ambiguous events ────────────
     if is_ready() and text:
         ml = classify_ml(text)
 
         if ml is not None:
-            # ML is confident enough — use its result
             task_id = ml["task_type_id"]
 
             features = {
@@ -137,5 +148,5 @@ def classify_event(request: ClassificationRequest) -> ClassificationResponse:
                 project_suggestion=None,
             )
 
-    # ── Step 2: Fall back to rule-based ──────────────────────────────────────
-    return _rule_based(request)
+    # ── Step 3: ML unavailable / low confidence — use rule-based result ───────
+    return rule_result

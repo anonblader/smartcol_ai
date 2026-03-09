@@ -11,6 +11,7 @@ import risksRoutes from './routes/risks.routes';
 import testRoutes from './routes/test.routes';
 import adminRoutes from './routes/admin.routes';
 import offdayRoutes from './routes/offday.routes';
+import mlPredictionRoutes from './routes/ml-prediction.routes';
 import { requireAdmin } from './middleware/admin.middleware';
 
 const app = express();
@@ -45,6 +46,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/risks', risksRoutes);
 app.use('/api/admin',  requireAdmin, adminRoutes);
 app.use('/api/offday', offdayRoutes);
+app.use('/api/ml',    mlPredictionRoutes);
 app.use('/api/test',  requireAdmin, testRoutes);
 
 // Error logging

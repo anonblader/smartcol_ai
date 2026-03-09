@@ -157,7 +157,7 @@ export const config = {
   // AI Classification Service
   ai: {
     serviceUrl: getEnv('AI_SERVICE_URL', 'http://localhost:8000'),
-    timeout: getEnvNumber('AI_SERVICE_TIMEOUT', 10000), // 10 seconds
+    timeout: getEnvNumber('AI_SERVICE_TIMEOUT', 30000), // 30 seconds (NLI on CPU can be slow)
     minConfidenceThreshold: parseFloat(getEnv('MIN_CONFIDENCE_THRESHOLD', '0.5')),
   },
 

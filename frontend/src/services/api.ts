@@ -80,6 +80,13 @@ export const adminApi = {
   getUsersList:     ()              => apiClient.get('/analytics/users-list'),
 };
 
+// ML Prediction API
+export const mlApi = {
+  predict:             ()                 => apiClient.post('/ml/predict'),
+  getWorkloadForecast: (userId?: string)  => apiClient.get('/ml/workload-forecast', userId ? { params: { userId } } : undefined),
+  getBurnoutScore:     (userId?: string)  => apiClient.get('/ml/burnout-score',     userId ? { params: { userId } } : undefined),
+};
+
 // Risks API
 export const risksApi = {
   getActive: () => apiClient.get('/risks/active'),

@@ -49,7 +49,7 @@ const SYNC_OPTIONS = [
   {
     key: 'overloaded' as SyncType,
     label: 'Overloaded Workload',
-    description: '11h+ days, back-to-back meetings, overtime, and clustered deadlines across 3 weeks.',
+    description: '12.5h days across 3 weeks: long morning meetings, afternoon planning, evening overtime incidents, and clustered deadlines.',
     icon: <TrendingUpIcon />,
     bg: '#ef4444',
     lightBg: '#fee2e2',

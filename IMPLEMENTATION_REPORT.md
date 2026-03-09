@@ -2485,29 +2485,172 @@ The hybrid wrapper preserves all existing behaviour — when ML is unavailable o
 
 ---
 
-## Updated Metrics (Phase 3)
+## Phase 4: ML-Powered Workload Prediction & Burnout Scoring
 
-| Metric | Phase 1 | Phase 2 | Phase 3 (Total) |
-|---|---|---|---|
-| Lines of Code | ~3,000 | ~28,000 | ~31,000+ |
-| Files | 31 | 110 | 120+ |
-| API Endpoints | 5 | 40 | 47+ |
-| Classification Types | 0 | 10 | 10 (hybrid ML+rules) |
-| Classifier Tests | 0 | 12/12 | 17/17 passing |
-| ML Models | 0 | 0 | 1 (bart-large-mnli) |
-| Off-Day Entitlement Rules | 0 | 0 | 2 (overtime + weekend) |
+**Date:** March 9, 2026
+
+### Overview
+
+Phase 4 extends the AI layer with two supervised machine learning models integrated directly into the sync pipeline. Both models are trained in-process on synthetic data at service startup (no external dataset required) and produce results within milliseconds.
 
 ---
 
-## Current Project Status (Updated)
+### 4.1 Workload Prediction — RandomForestRegressor
+
+**Goal:** Predict daily work minutes for the next 5 working days based on a user's historical workload pattern.
+
+**Model:** `sklearn.ensemble.RandomForestRegressor`
+- 100 estimators, max depth 8, min samples leaf 5
+- Trained on 2,500 synthetic samples covering 5 workload profiles (light → overloaded)
+- Day-of-week multipliers encoded to capture Monday/Friday load patterns
+
+**Input Features (10):**
+1. Day of week (0=Mon … 4=Fri)
+2. Week of year (1–52)
+3. Work minutes — same day, 1 week ago
+4. Work minutes — same day, 2 weeks ago
+5. Recent 5-day average
+6. Overall average (all history)
+7. Meeting time ratio
+8. Focus time ratio
+9. Average deadline count
+10. Overtime minutes (last week)
+
+**Output (per predicted day):**
+- `predicted_minutes` — forecasted work duration
+- `predicted_hours` — human-readable form
+- `load_level` — light / moderate / high / critical
+- `trend` — increasing / stable / decreasing
+- `confidence` — 0.30–0.92 (scales with amount of history available)
+
+**New endpoint:** `POST /predict/workload`
+**Stored in:** `workload_predictions` table (refreshed per sync)
+
+**Validation results (overloaded profile):**
+- Input: 3 days of 700–750 min/day → predicted next 5 days at 11.5–11.6h (critical)
+- Input: light 200–300 min/day → predicted next 5 days at 4–5h (light)
+
+---
+
+### 4.2 Burnout Risk Scoring — GradientBoostingClassifier
+
+**Goal:** Replace binary threshold-based burnout detection with a continuous ML-derived score (0–100) across 5 severity levels, enabling more nuanced and earlier detection.
+
+**Model:** `sklearn.ensemble.GradientBoostingClassifier`
+- 150 estimators, max depth 4, learning rate 0.10, subsample 0.85
+- Trained on 3,000 synthetic samples (10 profiles: none → critical, 300 samples each)
+- Multi-class (5 classes) with probability output → weighted score
+
+**Input Features (10, derived from last 4 weeks of weekly_workload):**
+1. Average weekly work hours
+2. Average overtime hours/week
+3. Overtime ratio (overtime / total work)
+4. Meeting ratio (meeting / total work)
+5. Focus ratio (focus / total work)
+6. Consecutive high-load weeks (weeks > 50h, capped at 5)
+7. Workload trend slope (positive = worsening)
+8. Count of weeks above 50h threshold
+9. Average daily meeting count
+10. Workload variability (std dev of weekly work)
+
+**Output:**
+- `score` — continuous 0–100 (weighted average of class probabilities × midpoints [5,25,50,75,95])
+- `level` — none / low / medium / high / critical
+- `trend` — improving / stable / worsening
+- `contributing_factors` — human-readable explanations driving the score
+- `confidence` — max class probability
+- `probabilities` — full class probability distribution
+- `metrics_summary` — avg hours, overtime, meeting ratio, focus ratio, high-load weeks
+
+**New endpoint:** `POST /score/burnout`
+**Stored in:** `burnout_scores` table (upserted per sync, one row per user per day)
+
+**Validation results:**
+| Profile | Score | Level | Key factors |
+|---|---|---|---|
+| Overloaded (63h/wk, 21h OT, 0% focus) | 95.0 | critical | High workload, heavy OT, no focus time |
+| Healthy (35h/wk, 0h OT, 40% focus) | 5.0 | none | Within healthy ranges |
+
+---
+
+### 4.3 Pipeline Integration
+
+Both models run automatically at the end of every sync cycle:
+
+```
+Mock Sync → Classify → Compute Workload → Detect Risks → ML Predictions (Forecast + Burnout Score)
+```
+
+The `clearUserData` endpoint also clears `workload_predictions` and `burnout_scores` before fresh syncs.
+
+---
+
+### 4.4 Backend Changes
+
+**New files:**
+- `classification-service/app/workload_predictor.py` — RandomForest workload model
+- `classification-service/app/burnout_scorer.py` — GradientBoosting burnout model
+- `backend/src/services/ml-prediction.client.ts` — HTTP client for new endpoints
+- `backend/src/services/ml-prediction.service.ts` — DB orchestration service
+- `backend/src/controllers/ml-prediction.controller.ts` — HTTP handlers
+- `backend/src/routes/ml-prediction.routes.ts` — `/api/ml/*` routes
+- `database/migrations/002_ml_predictions.sql` — `workload_predictions` + `burnout_scores` tables
+
+**Updated files:**
+- `classification-service/app/main.py` — registers `/predict/workload` and `/score/burnout`
+- `classification-service/app/models.py` — adds Pydantic request models
+- `classification-service/requirements.txt` — adds `scikit-learn>=1.4.0`, `numpy>=1.26.0`
+- `backend/src/app.ts` — registers `/api/ml` routes
+- `backend/src/controllers/sync.controller.ts` — adds ML step to all 3 sync pipelines + clears new tables on data wipe
+
+**New API endpoints:**
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/ml/predict` | Run both ML models and persist results |
+| `GET` | `/api/ml/workload-forecast` | Retrieve 5-day workload forecast |
+| `GET` | `/api/ml/burnout-score` | Retrieve latest burnout score |
+| `POST` | `/predict/workload` | (classification-service) Raw workload prediction |
+| `POST` | `/score/burnout` | (classification-service) Raw burnout scoring |
+
+---
+
+### 4.5 Frontend Changes
+
+**New components:**
+- `WorkloadForecastCard.tsx` — 5-day forecast grid with colour-coded load levels, confidence tooltips, trend arrows
+- `BurnoutScoreCard.tsx` — score gauge (0–100 linear bar), level chip, contributing factors list, probability summary
+
+**Integration:**
+- `Analytics.tsx` — adds WorkloadForecast + BurnoutScore panels above Off-Day section (both personal and admin views)
+- `Dashboard.tsx` — adds BurnoutScoreCard + WorkloadForecastCard to personal dashboard below active risks
+- `api.ts` — adds `mlApi` (`predict`, `getWorkloadForecast`, `getBurnoutScore`)
+
+---
+
+## Updated Metrics (Phase 4)
+
+| Metric | Phase 3 | Phase 4 (Total) |
+|---|---|---|
+| Lines of Code | ~31,000 | ~34,500+ |
+| Files | 120+ | 130+ |
+| API Endpoints | 47+ | 52+ |
+| ML Models | 1 (NLI classifier) | 3 (NLI + RF workload + GBM burnout) |
+| Database Tables | 15 | 17 |
+| Classifier Tests | 17/17 | 17/17 passing |
+
+---
+
+## Current Project Status (Updated — Phase 4)
 
 ### ✅ Fully Implemented & Tested
 - Microsoft OAuth 2.0 authentication with session management
 - Calendar sync (real Graph API + 3 mock workload profiles: balanced, overloaded, underloaded)
-- **Hybrid AI event classification** (10 task types — zero-shot ML + rule-based fallback)
+- **Hybrid AI event classification** (10 task types — zero-shot NLI + rule-based fallback)
 - Workload analytics (daily + weekly aggregation, heatmap, time breakdown)
 - Risk detection (6 algorithms, Active → Acknowledged → Auto-resolved lifecycle)
 - **Off-Day Recommendation Engine** (entitlement-based: overtime + weekend work rules)
+- **ML Workload Prediction** (RandomForest — 5-day forecast with load level + confidence)
+- **ML Burnout Risk Scoring** (GradientBoosting — 0-100 score, 5 levels, contributing factors)
 - Role-based access control (admin vs engineer views throughout)
 - React frontend with role-based Dashboard, Analytics, Risks, Settings
 - Admin team dashboard, tabbed off-day recommendations per member
@@ -2519,15 +2662,161 @@ The hybrid wrapper preserves all existing behaviour — when ML is unavailable o
 - Microsoft Graph `/me/events/delta` returns 401 on university/personal accounts — mock sync provided as workaround
 - Token encryption uses Base64 placeholder — AES-256-GCM + Azure Key Vault for production
 - Email requires SMTP credentials — console-log mode available for demo
-- ML inference on CPU (~400–800ms/event) — GPU recommended for production throughput
+- ML models trained on synthetic data — accuracy improves with real historical data accumulation
+- ML inference on CPU (~400–800ms/event for NLI; <100ms for RF/GBM) — GPU recommended for NLI production throughput
 
 ### 🔮 Remaining Future Enhancements
 - Background job scheduling (auto-run pipeline every 15 min without manual trigger)
 - Real calendar sync (requires organisational Microsoft 365 tenant)
 - Push/WebSocket real-time notifications
-- Active learning loop (use ML-classified events as training data for fine-tuning)
+- Active learning loop (use real classified events as training data for fine-tuning)
 - Redis caching for analytics queries
 - CI/CD pipelines and Azure production deployment
+
+---
+
+---
+
+## Phase 5: Bug Fixes, Classifier Optimisation & UI Improvements
+
+**Date:** March 9, 2026
+
+---
+
+### 5.1 Bug Fix — ML Service: Missing `meeting_minutes` Column
+
+**Problem:** `ml-prediction.service.ts` queried `meeting_minutes` and `focus_minutes` from the `weekly_workload` table, but those columns do not exist there (only in `daily_workload`). This caused every burnout scoring call to throw a DB error, silently producing no predictions.
+
+**Fix:** Changed the burnout scoring query to aggregate weekly metrics directly from `daily_workload` using `date_trunc('week', date)` grouping:
+
+```sql
+SELECT date_trunc('week', date)::date::text AS week_start_date,
+       SUM(work_minutes), SUM(overtime_minutes),
+       SUM(meeting_minutes), SUM(focus_minutes), SUM(meeting_count)
+FROM daily_workload WHERE user_id = $1
+GROUP BY date_trunc('week', date)
+ORDER BY week_start_date ASC
+```
+
+**Files changed:** `backend/src/services/ml-prediction.service.ts`
+
+---
+
+### 5.2 Bug Fix — Low Focus Time False Positive with Zero Data
+
+**Problem:** `detectLowFocusTime` was triggering the alert when `focus_minutes = 0` for the current week — including when there was *no workload data at all* (e.g. after clearing user data). This produced a stale `medium` alert even with an empty calendar.
+
+**Fix:** Added a `work_minutes` guard — if no work data exists for the week, skip the check and resolve any existing alert:
+
+```typescript
+const workMins = Number(result?.work_minutes || 0);
+if (workMins === 0) { await resolveAlert(userId, 5); return { triggered: false }; }
+```
+
+**Files changed:** `backend/src/services/risks.service.ts`
+
+---
+
+### 5.3 Bug Fix — Classification Timeout on Large Syncs
+
+**Problem:** `classifyEvents()` used `Promise.all` to fire all requests simultaneously. With 99 events and a single-threaded NLI model on CPU, every request queued up and hit the 10-second timeout — resulting in `classified: 0` and a broken analytics pipeline.
+
+**Two-part fix:**
+1. **Batched processing** — events processed in chunks of 8 (sequential batches, concurrent within each batch)
+2. **Increased timeout** — 10 s → 30 s per request
+
+**Files changed:** `backend/src/services/classification.client.ts`, `backend/src/config/env.ts`
+
+---
+
+### 5.4 Optimisation — Classifier Strategy: Rule-Based First
+
+**Problem:** The NLI model was invoked for *every* event (ML-first strategy). Most mock events have strong keyword matches and don't need NLI — adding 1–2 s latency per event unnecessarily.
+
+**Fix:** Flipped to **rule-based first**. If rule-based confidence ≥ 0.72, return instantly. Only ambiguous events (< 0.72) proceed to NLI. Result: most known-pattern events classify in < 100 ms.
+
+**Files changed:** `classification-service/app/classifier.py`
+
+---
+
+### 5.5 Mock Data Redesign — Heavy Profile: Fewer, Longer Events
+
+**Problem:** 6 events/day × 15 weekdays × 3 weeks = **99 events** — too many for reliable real-time classification.
+
+**Fix:** Redesigned to **3 longer events/day** (210 + 270 + 270 min = 750 min/day total):
+
+| Event | Duration | Classified As |
+|---|---|---|
+| Morning Standup & Sprint Review | 210 min | Routine Meeting |
+| Stakeholder Sync & Technical Planning | 270 min | Routine Meeting |
+| Urgent Production Incident Response | 270 min | Ad-hoc Troubleshooting |
+
+**New count:** 3 × 15 + 3 weekend + 6 deadlines = **54 events**. All 6 risks still triggered.
+
+**Files changed:** `backend/src/services/mock-calendar-sync.service.ts`
+
+---
+
+### 5.6 UI Improvement — Admin Dashboard: Tabbed Member View
+
+**Problem:** The team grid of cards becomes unwieldy as the team grows. Managers had to navigate to Analytics separately to see any individual's detail.
+
+**Fix:** Replaced card grid with a **horizontally scrollable tab bar** — one tab per member. Each tab shows:
+- Colour-coded initials avatar + load level chip + risk badge
+- Full detail panel on click: stat cards, Burnout Score, 5-Day Forecast, time breakdown chart
+- Lazy-loads each member's data only when their tab is first selected
+
+**Files changed:** `frontend/src/pages/Dashboard.tsx`
+
+---
+
+### 5.7 Auto-Generate ML Predictions on First Fetch
+
+**Problem:** Existing users (synced before Phase 4) saw empty ML panels — predictions only ran during syncs.
+
+**Fix:** Both ML GET endpoints auto-trigger `runMLPredictions(userId)` if no stored result is found, making predictions available immediately without a re-sync.
+
+**Files changed:** `backend/src/controllers/ml-prediction.controller.ts`
+
+---
+
+## Updated Metrics (Phase 5)
+
+| Metric | Phase 4 | Phase 5 (Total) |
+|---|---|---|
+| Lines of Code | ~34,500 | ~36,500+ |
+| Files | 130+ | 135+ |
+| API Endpoints | 52+ | 52+ |
+| ML Models | 3 | 3 |
+| Bug Fixes | 0 | 5 |
+| Mock Event Count (overloaded) | 99 | 54 |
+| Classifier Strategy | ML-first | Rule-based first |
+
+---
+
+## Current Project Status (Updated — Phase 5)
+
+### ✅ Fully Implemented & Tested
+- Microsoft OAuth 2.0 authentication with session management
+- Calendar sync (real Graph API + 3 mock workload profiles)
+- **Hybrid AI event classification** — rule-based first (≥ 0.72), NLI for ambiguous; batched 8 at a time
+- Workload analytics (daily + weekly aggregation, heatmap, time breakdown)
+- Risk detection (6 algorithms, full alert lifecycle)
+- **Off-Day Recommendation Engine** (entitlement-based)
+- **ML Workload Prediction** (RandomForest — 5-day forecast)
+- **ML Burnout Risk Scoring** (GradientBoosting — 0-100 score, 5 levels)
+- **Auto-generate ML predictions** on first fetch
+- Role-based access control throughout
+- **Admin tabbed dashboard** — per-member workload detail on tab click, scales to large teams
+- Email notification on risk acknowledgement (console-log fallback)
+- Multi-user test framework
+
+### 🔮 Remaining Future Enhancements
+- Background job scheduling
+- Real calendar sync (organisational Microsoft 365 tenant)
+- Push/WebSocket real-time notifications
+- Active learning loop for classifier fine-tuning
+- Redis caching, CI/CD, production deployment
 
 ---
 

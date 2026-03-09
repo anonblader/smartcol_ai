@@ -46,21 +46,33 @@ export async function classifyEvent(
 }
 
 /**
- * Classify a batch of events, returning results alongside any per-event errors
+ * Classify a batch of events in chunks to avoid overwhelming the CPU-bound NLI model.
+ * Events are processed BATCH_SIZE at a time (concurrent within each batch,
+ * sequential across batches), preventing timeout storms on large syncs.
  */
+const CLASSIFY_BATCH_SIZE = 8;
+
 export async function classifyEvents(
   requests: ClassificationRequest[]
 ): Promise<Array<{ request: ClassificationRequest; result?: ClassificationResponse; error?: string }>> {
-  return Promise.all(
-    requests.map(async (request) => {
-      try {
-        const result = await classifyEvent(request);
-        return { request, result };
-      } catch (err) {
-        const error = err instanceof Error ? err.message : 'Unknown error';
-        logger.warn('Failed to classify event', { eventId: request.event_id, error });
-        return { request, error };
-      }
-    })
-  );
+  const all: Array<{ request: ClassificationRequest; result?: ClassificationResponse; error?: string }> = [];
+
+  for (let i = 0; i < requests.length; i += CLASSIFY_BATCH_SIZE) {
+    const batch = requests.slice(i, i + CLASSIFY_BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (request) => {
+        try {
+          const result = await classifyEvent(request);
+          return { request, result };
+        } catch (err) {
+          const error = err instanceof Error ? err.message : 'Unknown error';
+          logger.warn('Failed to classify event', { eventId: request.event_id, error });
+          return { request, error };
+        }
+      })
+    );
+    all.push(...batchResults);
+  }
+
+  return all;
 }

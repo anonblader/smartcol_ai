@@ -9,6 +9,8 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { analyticsApi, adminApi, offdayApi } from '../services/api';
+import { WorkloadForecastCard } from '../components/dashboard/WorkloadForecastCard';
+import { BurnoutScoreCard }     from '../components/dashboard/BurnoutScoreCard';
 import { useAuth } from '../hooks/useAuth';
 import { format, parseISO } from 'date-fns';
 import BeachAccessIcon from '@mui/icons-material/BeachAccess';
@@ -235,8 +237,18 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
           </Paper>
         </Grid>
 
-        {/* Off-Day Recommendations */}
+        {/* ML Predictions: Workload Forecast */}
         <Grid item xs={12}>
+          <WorkloadForecastCard userId={userId} />
+        </Grid>
+
+        {/* ML Predictions: Burnout Risk Score */}
+        <Grid item xs={12} lg={6}>
+          <BurnoutScoreCard userId={userId} />
+        </Grid>
+
+        {/* Off-Day Recommendations */}
+        <Grid item xs={12} lg={6}>
           <OffDaySection userId={userId} userName={userName} />
         </Grid>
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 
 class Attendee(BaseModel):
@@ -28,3 +28,30 @@ class ClassificationResponse(BaseModel):
     model_version: str
     features: dict
     project_suggestion: Optional[str] = None
+
+
+# ── ML Prediction models ───────────────────────────────────────────────────────
+
+class DailyWorkloadInput(BaseModel):
+    date: str
+    work_minutes: float
+    meeting_minutes: float = 0.0
+    focus_minutes: float = 0.0
+    deadline_count: int = 0
+
+
+class WeeklyWorkloadInput(BaseModel):
+    week_start_date: str = ""
+    work_minutes: float
+    overtime_minutes: float = 0.0
+    meeting_minutes: float = 0.0
+    focus_minutes: float = 0.0
+    meeting_count: int = 0
+
+
+class WorkloadPredictionRequest(BaseModel):
+    historical_daily: List[DailyWorkloadInput]
+
+
+class BurnoutScoringRequest(BaseModel):
+    weekly_metrics: List[WeeklyWorkloadInput]

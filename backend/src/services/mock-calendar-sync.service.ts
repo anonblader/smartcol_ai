@@ -527,15 +527,39 @@ function generateHeavyMockEvents(userId: string): Partial<CalendarEvent>[] {
 
   let idx = 0;
 
-  const dailySchedule = [
-    // Back-to-back meetings 08:00–17:00
-    { subj: 'Daily Standup',            sh: 8,  sm: 0,  eh: 9,  em: 0  },  // 60
-    { subj: 'Sprint Review',            sh: 9,  sm: 0,  eh: 11, em: 0  },  // 120
-    { subj: 'Client Sync',             sh: 11, sm: 0,  eh: 12, em: 30 },  // 90
-    { subj: 'Architecture Review',      sh: 13, sm: 0,  eh: 15, em: 0  },  // 120
-    { subj: 'Cross-team Coordination',  sh: 15, sm: 0,  eh: 17, em: 0  },  // 120
-    // Overtime: 17:00–21:00 = 240 min → total 750 min (12.5h) ✓ qualifies for off-day
-    { subj: 'Urgent Production Fix',    sh: 17, sm: 0,  eh: 21, em: 0  },  // 240
+  // 3 events per day totalling 750 min (12.5h) — same daily load, half the event count.
+  // 210 + 270 + 270 = 750 min ✓  triggers all 6 risk types + off-day entitlement.
+  const dailySchedule: Array<{
+    subj: string; body: string;
+    sh: number; sm: number; eh: number; em: number;
+    attendees: Array<{ email: string; name: string; type: 'required' | 'optional'; status: 'accepted' | 'declined' | 'tentativelyAccepted' | 'organizer' | 'notResponded' }>;
+  }> = [
+    {
+      subj:    'Morning Standup & Sprint Review',
+      body:    'Daily standup, sprint progress review and team sync',
+      sh: 8,  sm: 0,  eh: 11, em: 30,   // 210 min — Routine Meeting
+      attendees: [
+        { email: 'manager@company.com', name: 'Sarah Chen',  type: 'required', status: 'accepted' },
+        { email: 'dev1@company.com',    name: 'John Smith',  type: 'required', status: 'accepted' },
+        { email: 'dev2@company.com',    name: 'Emily Wong',  type: 'required', status: 'accepted' },
+      ],
+    },
+    {
+      subj:    'Stakeholder Sync & Technical Planning',
+      body:    'Client sync, architecture planning and cross-team coordination meeting',
+      sh: 12, sm: 0,  eh: 16, em: 30,   // 270 min — Routine Meeting
+      attendees: [
+        { email: 'client@company.com',  name: 'Alex Johnson', type: 'required', status: 'accepted' },
+        { email: 'lead@company.com',    name: 'David Lee',    type: 'required', status: 'accepted' },
+        { email: 'dev1@company.com',    name: 'John Smith',   type: 'optional', status: 'accepted' },
+      ],
+    },
+    {
+      subj:    'Urgent Production Incident Response',
+      body:    'Emergency bug fix and troubleshooting for critical production outage — P0 incident',
+      sh: 17, sm: 0,  eh: 21, em: 30,   // 270 min overtime — Ad-hoc Troubleshooting
+      attendees: [],
+    },
   ];
 
   for (const weekOffset of [-2, -1, 0]) {
@@ -549,16 +573,14 @@ function generateHeavyMockEvents(userId: string): Partial<CalendarEvent>[] {
           graph_event_id: `heavy-${userId}-w${weekOffset}-d${dow}-${idx}`,
           graph_calendar_id: 'mock-calendar-primary',
           subject: slot.subj,
-          body_preview: `Heavy schedule event — week ${weekOffset}, day ${dow}`,
+          body_preview: slot.body,
           start_time: start,
           end_time: end,
           is_all_day: false,
           is_recurring: false,
           recurrence_pattern: null,
           location: 'Conference Room / Teams',
-          attendees: [
-            { email: 'colleague1@company.com', name: 'Team Member', type: 'required', status: 'accepted' },
-          ],
+          attendees: slot.attendees,
           organizer_email: 'ariff@company.com',
           status: 'confirmed',
           response_status: 'organizer',

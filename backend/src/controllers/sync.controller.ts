@@ -10,6 +10,7 @@ import { syncMockCalendarEvents, syncLightMockEvents, syncHeavyMockEvents } from
 import { classifyUserEvents } from '../services/event-classification.service';
 import { computeWorkload } from '../services/analytics.service';
 import { detectRisks } from '../services/risks.service';
+import { runMLPredictions } from '../services/ml-prediction.service';
 import { db } from '../services/database.client';
 import { logger } from '../config/monitoring.config';
 import { SyncHistory } from '../types';
@@ -309,10 +310,11 @@ export async function syncMockCalendar(req: Request, res: Response): Promise<voi
     const result = await syncMockCalendarEvents(userId);
 
     if (result.success) {
-      // Auto-classify → compute workload → detect risks
+      // Auto-classify → compute workload → detect risks → ML predictions
       const classification = await classifyUserEvents(userId);
       const workload = await computeWorkload(userId);
       const risks = await detectRisks(userId);
+      const mlPredictions = await runMLPredictions(userId);
 
       res.json({
         success: true,
@@ -338,6 +340,12 @@ export async function syncMockCalendar(req: Request, res: Response): Promise<voi
           alertsUpdated: risks.alertsUpdated,
           risksDetected: risks.risksDetected,
           error: risks.error,
+        },
+        mlPredictions: {
+          workloadPredictions: mlPredictions.workloadPredictions,
+          burnoutScore: mlPredictions.burnoutScore,
+          burnoutLevel: mlPredictions.burnoutLevel,
+          error: mlPredictions.error,
         },
         note: 'This was a mock sync with sample data for demonstration purposes',
       });
@@ -379,6 +387,7 @@ export async function syncLightMockCalendar(req: Request, res: Response): Promis
       const classification = await classifyUserEvents(userId);
       const workload = await computeWorkload(userId);
       const risks = await detectRisks(userId);
+      const mlPredictions = await runMLPredictions(userId);
       res.json({
         success: true,
         message: 'Light mock sync completed — minimal workload schedule applied',
@@ -386,6 +395,7 @@ export async function syncLightMockCalendar(req: Request, res: Response): Promis
         classification: { classified: classification.classified },
         workload: { daysProcessed: workload.daysProcessed },
         risks: { risksDetected: risks.risksDetected },
+        mlPredictions: { workloadPredictions: mlPredictions.workloadPredictions, burnoutScore: mlPredictions.burnoutScore, burnoutLevel: mlPredictions.burnoutLevel },
         note: 'Underloaded schedule: minimal meetings, no focus time — triggers Low Focus Time risk',
       });
     } else {
@@ -415,6 +425,7 @@ export async function syncHeavyMockCalendar(req: Request, res: Response): Promis
       const classification = await classifyUserEvents(userId);
       const workload = await computeWorkload(userId);
       const risks = await detectRisks(userId);
+      const mlPredictions = await runMLPredictions(userId);
 
       res.json({
         success: true,
@@ -428,6 +439,7 @@ export async function syncHeavyMockCalendar(req: Request, res: Response): Promis
         classification: { classified: classification.classified, failed: classification.failed },
         workload: { daysProcessed: workload.daysProcessed, weeksProcessed: workload.weeksProcessed },
         risks: { alertsCreated: risks.alertsCreated, risksDetected: risks.risksDetected },
+        mlPredictions: { workloadPredictions: mlPredictions.workloadPredictions, burnoutScore: mlPredictions.burnoutScore, burnoutLevel: mlPredictions.burnoutLevel },
         note: 'Overloaded schedule: back-to-back meetings + overtime + clustered deadlines across 3 weeks',
       });
     } else {
@@ -456,11 +468,14 @@ export async function clearUserData(req: Request, res: Response): Promise<void> 
     logger.info('Clearing user data for fresh mock sync', { userId });
 
     // Order matters — calendar_events cascades to event_classifications
-    await db.query('DELETE FROM risk_alerts       WHERE user_id = $1', [userId]);
-    await db.query('DELETE FROM daily_workload     WHERE user_id = $1', [userId]);
-    await db.query('DELETE FROM weekly_workload    WHERE user_id = $1', [userId]);
-    await db.query('DELETE FROM calendar_events    WHERE user_id = $1', [userId]);
-    await db.query('DELETE FROM sync_history       WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM risk_alerts            WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM daily_workload          WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM weekly_workload         WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM workload_predictions    WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM burnout_scores          WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM offday_recommendations  WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM calendar_events         WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM sync_history            WHERE user_id = $1', [userId]);
 
     logger.info('User data cleared', { userId });
     res.json({ success: true, message: 'All calendar data cleared' });

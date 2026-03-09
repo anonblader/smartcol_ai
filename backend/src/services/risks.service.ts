@@ -295,8 +295,9 @@ async function detectExcessiveTroubleshooting(
 async function detectLowFocusTime(
   userId: string
 ): Promise<{ triggered: boolean; action?: 'created' | 'updated' }> {
-  const result = await db.queryOne<{ focus_minutes: number; week_start: string }>(
+  const result = await db.queryOne<{ focus_minutes: number; work_minutes: number; week_start: string }>(
     `SELECT SUM(focus_minutes) AS focus_minutes,
+            SUM(work_minutes)  AS work_minutes,
             MIN(date_trunc('week', NOW()))::date::text AS week_start
      FROM daily_workload
      WHERE user_id = $1
@@ -304,7 +305,15 @@ async function detectLowFocusTime(
     [userId]
   );
 
-  const mins = Number(result?.focus_minutes || 0);
+  const mins      = Number(result?.focus_minutes || 0);
+  const workMins  = Number(result?.work_minutes  || 0);
+
+  // No data yet — skip to avoid false positives on fresh syncs
+  if (workMins === 0) {
+    await resolveAlert(userId, 5);
+    return { triggered: false };
+  }
+
   if (mins >= LOW_FOCUS_MINUTES) {
     await resolveAlert(userId, 5);
     return { triggered: false };
