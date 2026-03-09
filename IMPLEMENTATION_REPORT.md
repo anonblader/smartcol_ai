@@ -3291,6 +3291,16 @@ UNIQUE(event_id)  -- re-correction overwrites previous
 - Admin risk acknowledgement + dismissal with email notification
 - Multi-user test framework with seeded profiles and pipeline runner
 
+### 🔒 Security Hardening (post-Phase 8)
+A full security audit was conducted. 5 vulnerabilities were identified and fixed:
+- Session cookie flags added (`httpOnly`, `sameSite:lax`, `secure` in prod, 8h maxAge)
+- Helmet.js applied (was installed but never called — 8 security headers now active)
+- Rate limiting registered (`express-rate-limit`: 500/100 dev, 100/20 prod per 15 min)
+- HTML injection in email templates fixed via `esc()` helper on all user-controlled data
+- IDOR: `?userId=` query param bypass fixed — session required before it is honoured
+
+See `SECURITY_REPORT.md` for the full audit, accepted risks, and production recommendations.
+
 ### 🔄 Known Limitations
 - Microsoft Graph returns 401 for personal accounts — mock sync provided as demo workaround
 - Token encryption uses Base64 placeholder — AES-256-GCM + Azure Key Vault for production

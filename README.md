@@ -699,6 +699,7 @@ Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 
 |---|---|
 | `README.md` | This file — project overview, architecture, API reference, change log |
 | `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes (Phases 1–8) |
+| `SECURITY_REPORT.md` | Full security audit — strengths, 5 vulnerabilities fixed, accepted risks, future recommendations |
 | `TEST_LOGS.md` | 51 test cases across all phases with actual terminal output |
 | `STARTUP_GUIDE.md` | Step-by-step local setup with environment variable reference |
 

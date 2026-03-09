@@ -245,16 +245,20 @@ app.use(helmet({
 **Fix applied:**
 ```typescript
 import rateLimit from 'express-rate-limit';
+const isDev = process.env.NODE_ENV !== 'production';
 
-// General API: 100 requests per 15 minutes
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+// General API: 500 req/15min (dev), 100 req/15min (prod)
+const apiLimiter  = rateLimit({ windowMs: 15 * 60 * 1000, max: isDev ? 500 : 100 });
 
-// Auth endpoints: stricter — 10 requests per 15 minutes
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+// Auth: 100 req/15min (dev — OAuth redirects involve multiple hops),
+//       20  req/15min (prod — stricter brute force prevention)
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: isDev ? 100 : 20 });
 
-app.use('/api/', apiLimiter);
+app.use('/api/',      apiLimiter);
 app.use('/api/auth/', authLimiter);
 ```
+
+**Note on dev/prod split:** The initial implementation used a blanket limit of 10 for auth endpoints, which caused OAuth login failures in development — the redirect flow from Microsoft back to the callback consumes several auth-prefix requests in quick succession. The dev-mode limit is set high enough to never interfere with legitimate usage while production remains strict.
 
 **Verified:** `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` headers present on all API responses.
 
@@ -336,6 +340,23 @@ const userId = (req.query.userId as string) || sessionUserId;
 ```
 
 **Verified:** `GET /api/analytics/daily?userId=00000000-...` now returns `401 Unauthorized` without a session.
+
+---
+
+### Additional Fix — Silent Login Failure (UX Security)
+
+**Severity:** Medium (usability + security transparency)
+**Status:** ✅ Fixed
+
+**Description:**
+The frontend login button called `authApi.getConnectUrl()` but only logged errors to the browser console. A `429 Too Many Requests` (rate limit) or backend unreachable response would cause the button to appear completely non-functional with no feedback, leaving the user unable to diagnose the issue.
+
+**Fix applied (`App.tsx`):**
+- Added loading state and spinner while redirecting to Microsoft
+- Added visible error `Alert` component for two specific cases:
+  - `429` → "Too many sign-in attempts. Please wait a minute and try again."
+  - Other errors → "Sign-in failed. Make sure the backend is running on port 3001."
+- Button disabled during loading to prevent duplicate requests
 
 ---
 
@@ -554,7 +575,7 @@ This prevents invalid UUIDs, out-of-range numbers, and malformed dates from reac
 | CSRF protection (OAuth) | ✅ Implemented | State parameter validated |
 | Session cookie flags | ✅ Implemented | httpOnly, sameSite:lax (OAuth compatible), secure (prod) |
 | Security headers (Helmet) | ✅ Implemented | X-Frame, X-Content-Type, Referrer-Policy, etc. |
-| Rate limiting | ✅ Implemented | 100/15min general, 10/15min auth |
+| Rate limiting | ✅ Implemented | Dev: 500/100 per 15min (general/auth) · Prod: 100/20 per 15min |
 | HTML escaping in emails | ✅ Implemented | esc() applied to all user-controlled template data |
 | IDOR fix (userId bypass) | ✅ Implemented | Session required before ?userId= is honoured |
 | Admin RBAC | ✅ Implemented | requireAdmin middleware on all admin routes |
