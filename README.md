@@ -4,6 +4,22 @@
 
 ---
 
+## Table of Contents
+
+1. [Project Status](#project-status)
+2. [What Has Been Built](#what-has-been-built)
+3. [Changes from Original Plan](#changes-from-original-plan)
+4. [System Architecture](#system-architecture)
+5. [Technology Stack](#technology-stack)
+6. [Database Schema](#database-schema)
+7. [API Reference](#api-reference)
+8. [Quick Start](#quick-start)
+9. [Known Limitations](#known-limitations)
+10. [What Remains](#what-remains)
+11. [Documentation](#documentation)
+
+---
+
 ## Project Status
 
 | Phase | Description | Status |
@@ -23,207 +39,462 @@
 ## What Has Been Built
 
 ### Phase 1 — Foundation
-- **Microsoft OAuth 2.0** authentication with session management
-- **PostgreSQL schema** — 17 tables covering users, events, classifications, analytics, risks, off-day recommendations, ML predictions, notifications, and audit logs
-- **Calendar sync** — real Microsoft Graph API integration + 3 mock workload profiles (Balanced, Overloaded, Underloaded) for demo/testing
-- **Token storage** — encrypted refresh tokens in PostgreSQL
+- **Microsoft OAuth 2.0** authentication with CSRF-protected state parameter and session management
+- **PostgreSQL schema** — 17 tables covering users, OAuth tokens, calendar events, classifications, analytics, risks, off-day recommendations, ML predictions, notifications, sync history, and audit logs
+- **Calendar sync** — real Microsoft Graph API (delta queries) + 3 mock workload profiles for demo:
+  - **Balanced** — 8 events/week, healthy schedule, no risks triggered
+  - **Overloaded** — 54 events across 3 weeks, 750 min/day (12.5h), triggers all 6 risks
+  - **Underloaded** — 3 minimal events/week, triggers Low Focus Time
+- **Token storage** — encrypted refresh tokens in PostgreSQL; access tokens in express-session
 
 ### Phase 2 — AI Event Classification
 - **Python FastAPI** classification microservice (port 8000)
-- **Hybrid classifier**: rule-based first (≥ 0.72 confidence → instant), NLI zero-shot fallback for ambiguous events
-- **Model**: `facebook/bart-large-mnli` via Hugging Face Transformers
+- **Hybrid classifier** (rule-based first strategy):
+  1. Rule-based engine — keyword scoring + structural heuristics
+  2. If confidence ≥ 0.72 → return instantly (most known events)
+  3. If confidence < 0.72 → try NLI zero-shot model
+  4. NLI model: `facebook/bart-large-mnli` (Hugging Face Transformers)
+  5. Fallback to rule-based if NLI confidence < 0.50
 - **10 task types**: Deadline, Ad-hoc Troubleshooting, Project Milestone, Routine Meeting, 1:1 Check-in, Admin/Operational, Training/Learning, Focus Time, Break/Personal, Out of Office
-- **Batched processing**: 8 events per batch to prevent CPU timeout storms
-- **17/17 classifier tests passing**
+- **Batched processing**: 8 events per batch (prevents CPU timeout storms on large syncs)
+- **Timeout**: 30 s per request (raised from original 10 s for CPU-based NLI inference)
+- 17/17 classifier tests passing
 
 ### Phase 3 — Workload Analytics
-- Daily & weekly workload computation from classified events
-- **Endpoints**: dashboard, daily breakdown, weekly summary, heatmap, time breakdown by task type
-- Metrics: work minutes, meeting minutes, focus minutes, overtime, deadline counts
-- Workload heatmap (last 30 days), task type time breakdown chart
+- Daily and weekly workload computation from classified events, stored in `daily_workload` and `weekly_workload` tables
+- **Metrics computed per day**: total minutes, work minutes, meeting minutes, focus minutes, break minutes, overtime minutes, meeting count, deadline count
+- **Dashboard endpoint** returns: current week summary, last 7 days daily breakdown, time breakdown by task type, upcoming events (next 7 days)
+- Workload heatmap (configurable days, default 30), time breakdown bar chart
 
 ### Phase 4 — Risk Detection & Off-Day Recommendations
-**6 risk detection algorithms:**
-| Risk Type | Trigger | Severity |
+**6 rule-based risk detection algorithms:**
+
+| Risk | Threshold | Severity |
 |---|---|---|
 | High Daily Workload | > 600 min/day | High / Critical |
-| Burnout Risk | > 3000 min/week × 3 consecutive weeks | Critical |
+| Burnout Risk | > 3,000 min/week × 3 consecutive weeks | Critical |
 | Overlapping Deadlines | 2+ deadlines within 3-day window | Medium / High |
-| Excessive Troubleshooting | > 480 min/week ad-hoc | Medium / High |
-| Low Focus Time | < 300 min/week focus blocks | Low / Medium |
-| Meeting Overload | > 1200 min OR 25+ meetings/week | Medium / High |
+| Excessive Troubleshooting | > 480 min/week ad-hoc incidents | Medium / High |
+| Low Focus Time | < 300 min/week focus blocks (only if work data exists) | Low / Medium |
+| Meeting Overload | > 1,200 min OR 25+ meetings/week | Medium / High |
 
-**Alert lifecycle**: Active → Acknowledged (ongoing) → Auto-resolved / Dismissed
+**Alert lifecycle**: Active → Acknowledged (ongoing) → Auto-resolved when condition clears / Dismissed
 
 **Off-Day Recommendation Engine:**
-- Entitlement: +1 off-day per weekday ≥ 720 min; +1 per any weekend work
-- Scores next 30 weekdays (0–100) on workload, deadlines, meeting density
+- Entitlement rules: +1 off-day per weekday ≥ 720 min worked; +1 per any weekend work
+- Recommendations scored 0–100 (lighter workload, fewer deadlines/meetings = higher score)
 - Recommendations capped to available entitlement balance
-- Accept / Decline with balance tracking
+- Accept / Decline flow with balance tracking
 
 ### Phase 4.5 — ML Workload Prediction & Burnout Scoring
-Two additional ML models trained in-process on startup (no external dataset needed):
+Two additional supervised ML models, trained in-process at service startup (no external dataset required):
 
-**Workload Prediction (RandomForestRegressor):**
-- Input: last 20 days of workload history (10 features)
-- Output: 5-day forecast with predicted hours, load level, confidence, trend
-- Load levels: light / moderate / high / critical
-- Confidence scales with history depth (0.30–0.92)
+**Workload Prediction (`rf-workload-v1.0` — RandomForestRegressor):**
+- 100 estimators, max depth 8; trained on 2,500 synthetic samples (5 load profiles)
+- **Features (10)**: day of week, week of year, previous week workload, 2-week average, overall average, meeting ratio, focus ratio, avg deadline count, overtime trend
+- **Output per day**: predicted minutes, predicted hours, load level (light / moderate / high / critical), confidence (0.30–0.92), trend direction
+- Predicts next 5 working days; skips weekends automatically
 
-**Burnout Risk Scoring (GradientBoostingClassifier):**
-- Input: last 4 weeks of weekly workload metrics (10 features)
-- Output: continuous score 0–100, level (none/low/medium/high/critical), trend, contributing factors
-- Validated: healthy profile → 5/none; overloaded (64h/wk) → 95/critical
+**Burnout Scoring (`gbm-burnout-v1.0` — GradientBoostingClassifier):**
+- 150 estimators, max depth 4, learning rate 0.10; trained on 3,000 synthetic samples (5 burnout profiles)
+- **Features (10)**: avg weekly hours, overtime hours/week, overtime ratio, meeting ratio, focus ratio, consecutive high-load weeks, workload trend slope, weeks above 50h, avg daily meetings, workload variability
+- **Output**: continuous score 0–100 (weighted class probabilities × midpoints), level, trend, contributing factors, full class probability distribution
+- Auto-generates on first fetch if no stored result exists
 
-Both models auto-generate on first page load if no stored result exists.
+Both models persist results to `workload_predictions` and `burnout_scores` tables, refreshed on every sync.
 
-### Phase 5 — Frontend & Bug Fixes
-**React + MUI frontend (port 3000):**
-- Role-based views: Admin vs Engineer
-- **Personal Dashboard**: stat cards, time breakdown, upcoming events, active risk alerts, burnout score card, 5-day workload forecast
-- **Admin Dashboard**: 4 team summary stats + horizontally scrollable tabbed member view — one tab per engineer showing their full workload detail
-- **Analytics page**: daily table, weekly summary, heatmap, time breakdown chart, workload forecast, burnout score, off-day recommendations
-- **Risks page**: Active / Ongoing / History tabs; admin can acknowledge & email engineer
-- **Settings page**: mock data profiles, sync status, team test data management (admin), background jobs (admin)
+### Phase 5 — Frontend Integration & Bug Fixes
+**React + MUI frontend (port 3000), role-based views:**
+
+| View | Engineer | Admin |
+|---|---|---|
+| Dashboard | Personal stats, burnout score, 5-day forecast, active risks | Team summary stats + **tabbed member view** (one tab per engineer) |
+| Analytics | Own daily/weekly/heatmap/forecast/burnout/off-day | Dropdown to view any member's analytics |
+| Risks | Own active/ongoing/history tabs | All team risks; acknowledge + email engineer |
+| Settings | Mock sync profiles, sync status | + Team test data management + Background jobs |
+
+**Admin tabbed dashboard**: replaces original card grid — horizontally scrollable tab bar with per-member load chip, risk badge, and full detail panel (stat cards, burnout score, 5-day forecast, time breakdown chart) loaded lazily on first tab selection.
 
 **Bug fixes shipped in Phase 5:**
-- Classification timeout storm (99 concurrent → batched 8 at a time, timeout 30 s)
-- `meeting_minutes` column missing from `weekly_workload` — fixed to aggregate from `daily_workload`
-- Low Focus Time false positive on zero data — added `work_minutes` guard
-- Classifier flipped to rule-based first (ML reserved for ambiguous events only)
-- Heavy mock reduced from 99 → 54 events (3 longer events/day, same 750 min total)
+
+| Bug | Fix |
+|---|---|
+| Classification timeout storm (99 concurrent requests) | Batched to 8 at a time; timeout raised to 30 s |
+| `meeting_minutes` missing from `weekly_workload` | ML service now aggregates from `daily_workload` |
+| Low Focus Time false positive with no data | Added `work_minutes = 0` guard before triggering |
+| ML-first classifier strategy caused slow bulk classification | Flipped to rule-based first; NLI only for ambiguous events |
+| Heavy mock had 99 events (too many for real-time classification) | Redesigned to 3 longer events/day = 54 total, same 750 min/day |
 
 ### Phase 6 — Background Job Scheduling
-**Two scheduled jobs (node-cron):**
+**Two scheduled jobs (node-cron), started on server startup:**
 
 | Job | Schedule | What it does |
 |---|---|---|
-| Analytics Pipeline | Every 30 min | Classify → compute workload → detect risks → ML predictions for all users with data |
-| Calendar Sync | Every 2 hours | Microsoft Graph sync for users with valid org tokens, then full pipeline |
+| **Analytics Pipeline** | `*/30 * * * *` (every 30 min) | classify → compute workload → detect risks → ML predictions, for all users with events |
+| **Calendar Sync** | `0 */2 * * *` (every 2 hours) | Microsoft Graph sync for users with valid org OAuth tokens, then full pipeline |
 
-**Admin controls** (Settings page):
-- Live status card per job (last run, duration, users processed, next run)
-- **Run Now** — manual trigger
-- **Pause / Resume** — disable without unregistering
+**Scheduler features:**
+- Per-user error isolation (one failure doesn't block others)
+- In-memory job status tracking (last run, duration, users processed, next run estimate)
+- Graceful shutdown: `stopScheduler()` called on SIGTERM/SIGINT
 
-Scheduler starts on server startup, stops cleanly on graceful shutdown.
+**Admin UI (Settings page):**
+- Live status card per job, auto-refreshes every 15 s
+- **Run Now** button, **Pause / Resume** toggle per job
+
+---
+
+## Changes from Original Plan
+
+The following documents significant deviations from the original design specification to the actual implementation, along with the reasons for each change.
+
+---
+
+### 1. Classifier Strategy — ML-First → Rule-Based First
+
+**Original plan:**
+> "Hybrid Model: 60% ML + 40% Rules weighted voting"
+
+**Actual implementation:**
+Rule-based engine runs first. If confidence ≥ 0.72, result is returned instantly without invoking the NLI model. Only ambiguous events (< 0.72) proceed to `facebook/bart-large-mnli`.
+
+**Why:** The NLI model runs on CPU in this demo environment, taking 1–2 seconds per inference. Sending all events through it caused timeout storms on larger syncs (99 events = all timed out). The rule-based engine handles ~70% of events instantly with high confidence; ML is reserved for genuinely ambiguous cases.
+
+**Impact:** Classification is significantly faster (< 100 ms for most events), more reliable, and still uses ML for the cases where it adds value.
+
+---
+
+### 2. Background Jobs — Bull (Redis Queue) → node-cron
+
+**Original plan:**
+> "Bull Queue Jobs: Calendar Sync every 15 min, Classification on event create/update, Daily Overtime Calculation 1 AM, Risk Detection 6 AM, Off-Day Recommendations weekly, Weekly Summary Email Monday 8 AM"
+
+**Actual implementation:**
+Two jobs managed by `node-cron` (in-process):
+- Analytics Pipeline every 30 minutes
+- Calendar Sync every 2 hours
+
+**Why:** Bull requires Redis as a persistent job queue backend. While Redis is configured in the environment, setting it up as a production job queue added infrastructure complexity not warranted for a capstone demo. `node-cron` runs in-process, requires no additional infrastructure, and is sufficient for the demo's scheduling needs.
+
+**What was simplified:**
+- Classification is not a separate job — it runs as part of the unified pipeline
+- Overtime calculation is embedded in the Analytics Pipeline (no dedicated job)
+- Risk detection runs as part of the pipeline (no dedicated 6 AM job)
+- Off-day recommendation generation remains on-demand (user-triggered)
+- Weekly summary email is not yet automated (requires SMTP configuration)
+
+---
+
+### 3. Additional ML Models Added (Not in Original Plan)
+
+**Original plan:** The AI service was scoped to event classification only.
+
+**Actual additions:**
+1. **Workload Prediction** (`RandomForestRegressor`) — 5-day forecast of daily work minutes
+2. **Burnout Risk Scoring** (`GradientBoostingClassifier`) — continuous 0–100 score replacing purely threshold-based burnout detection
+
+**Why:** During development, it became clear that threshold-based risk detection (e.g., "> 50h/week = burnout") is too blunt. A continuous ML score provides more nuanced, earlier signals. Workload prediction adds proactive value by forecasting upcoming busy periods before they happen.
+
+Both models are trained on synthetic data at service startup — no external dataset is required, keeping the demo self-contained.
+
+---
+
+### 4. Token Storage — Redis (Short-Lived) → PostgreSQL Only
+
+**Original plan:**
+> "Access tokens: Redis (short-lived, 1 hour). Refresh tokens: PostgreSQL (encrypted with AES-256-GCM)"
+
+**Actual implementation:**
+Both access tokens and refresh tokens are stored in PostgreSQL (`oauth_tokens` table). The server uses `express-session` for session state. Redis is configured in the environment but is not actively used for token storage.
+
+**Why:** Adding Redis as a runtime dependency (beyond what PostgreSQL already provides) increased setup complexity without meaningful benefit in a single-server demo environment. The session store and token lookup are fast enough with PostgreSQL for the demo scale.
+
+**What remains:** Redis caching for analytics queries (listed as a future enhancement) would improve performance at scale.
+
+---
+
+### 5. Token Encryption — AES-256-GCM → Base64 Placeholder
+
+**Original plan:**
+> "Token encryption: AES-256-GCM with per-token IV. Key management: Azure Key Vault with RBAC"
+
+**Actual implementation:**
+Tokens are stored with Base64 encoding as a placeholder. The `TOKEN_ENCRYPTION_KEY` in `.env` is documented as a placeholder for development only.
+
+**Why:** Azure Key Vault integration requires an active Azure subscription and additional SDK configuration. For a local demo environment, the Base64 placeholder allows the full auth flow to work end-to-end. Production deployment would replace this with AES-256-GCM + Azure Key Vault.
+
+---
+
+### 6. Off-Day Recommendations — Pure Scoring → Entitlement-Based
+
+**Original plan:**
+> "Generates top 10 recommended days, priority score 0–100"
+
+**Actual implementation:**
+An entitlement system was added on top of the scoring:
+- Users **earn** off-days: +1 per weekday ≥ 720 min worked, +1 per any weekend work
+- Recommendations are **capped** to the available entitlement balance
+- Users can **accept or decline** recommendations; accepted ones are deducted from balance
+
+**Why:** Pure scoring without entitlement had no business logic constraining how many recommendations a user could accept. The entitlement system ties recommendations to actual overtime worked, making them feel earned rather than arbitrary.
+
+---
+
+### 7. Admin Functionality Added (Not in Original Plan)
+
+**Original plan:** No distinction between admin and regular users was specified.
+
+**Actual additions:**
+- **Role-based access control** — admin vs engineer views throughout the frontend
+- **Admin dashboard** — team overview with per-member workload detail (tabbed view)
+- **Admin analytics** — view any team member's analytics via user selector
+- **Admin risks** — see all team risks; acknowledge and email the affected engineer
+- **Admin off-day view** — see all team members' pending recommendations
+- **Admin scheduler** — control background jobs (Run Now, Pause/Resume)
+- **Admin test data** — seed fixed profiles, add random users, run pipeline per user
+
+---
+
+### 8. Mock Sync Profiles Added (Not in Original Plan)
+
+**Original plan:** Only real Microsoft Graph sync was specified.
+
+**Actual additions:**
+Three deterministic mock sync profiles were built to support testing without an org Microsoft 365 tenant:
+
+| Profile | Events | Daily Load | Risks Triggered |
+|---|---|---|---|
+| Balanced | ~8 events | ~8h/day | None |
+| Overloaded | 54 events × 3 weeks | 12.5h/day | All 6 |
+| Underloaded | 3 events/week | ~1.5h/day | Low Focus Time |
+
+The overloaded profile was redesigned mid-project from 6 small events/day (99 total) to 3 longer events/day (54 total) to avoid classification timeout issues.
+
+---
+
+### 9. Database — 15 Tables → 17 Tables
+
+**Original plan:** 15 tables specified in initial schema.
+
+**Additions in migration 002:**
+- `workload_predictions` — stores 5-day workload forecasts per user (from RandomForest model)
+- `burnout_scores` — stores daily burnout scores per user (from GradientBoosting model), with UPSERT on `(user_id, score_date)`
+
+---
+
+### 10. Features Not Yet Implemented from Original Plan
+
+| Feature | Original Plan | Status | Notes |
+|---|---|---|---|
+| WebSocket / Socket.io real-time updates | Planned | ❌ Not built | Infrastructure complexity; polling/refresh used instead |
+| Push notifications (FCM/mobile) | Planned | ❌ Not built | Requires mobile app or PWA with service worker |
+| Active learning (user feedback loop) | Planned | ❌ Not built | No feedback UI built; classifier corrections not fed back |
+| Swagger UI at `/api/docs` | Planned | ❌ Not built | API documented in this README instead |
+| PKCE for OAuth | Planned | ❌ Not built | Standard auth code flow used; PKCE adds browser security but not required server-side |
+| Redis caching for analytics | Planned | ❌ Not built | Queries fast enough at demo scale without it |
+| Automated test suite (Jest/Cypress) | Planned | ❌ Not built | Manual tests documented in TEST_LOGS.md instead |
+| Weekly summary email (automated) | Planned | ❌ Not built | Requires SMTP config + scheduler enhancement |
+| Azure deployment | Planned | 🔄 Pending | Local dev only; deployment guide to be written |
 
 ---
 
 ## System Architecture
 
+### Actual Architecture (Current)
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     CLIENT LAYER                             │
-│   React 18 + TypeScript + MUI v5 + Redux + Recharts         │
-│   Dashboard │ Analytics │ Risks │ Settings                   │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ HTTP / REST
-┌─────────────────────────┴───────────────────────────────────┐
-│                   BACKEND (port 3001)                        │
-│   Node.js 20 + Express + TypeScript                          │
-│   Auth │ Sync │ Analytics │ Risks │ Off-Day │ ML │ Scheduler │
-└──────┬────────────────────────────────────┬─────────────────┘
-       │                                    │ HTTP
-┌──────┴──────────┐          ┌──────────────┴──────────────────┐
-│  PostgreSQL 15  │          │  AI/ML Service (port 8000)       │
-│  17 tables      │          │  Python + FastAPI                │
-│  Users, Events  │          │  /classify   — hybrid NLI+rules  │
-│  Analytics      │          │  /predict/workload — RandomForest│
-│  Risks, ML      │          │  /score/burnout — GradientBoost  │
-│  Predictions    │          │  scikit-learn + transformers     │
-└─────────────────┘          └─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        CLIENT LAYER                              │
+│   React 18 + TypeScript + MUI v5 + Redux Toolkit + Recharts     │
+│   ┌──────────┐ ┌───────────┐ ┌────────┐ ┌──────────────────┐   │
+│   │Dashboard │ │ Analytics │ │ Risks  │ │ Settings         │   │
+│   │(tabbed   │ │(per-user  │ │(team + │ │(mock sync, jobs, │   │
+│   │ members) │ │ selector) │ │personal│ │ test users)      │   │
+│   └──────────┘ └───────────┘ └────────┘ └──────────────────┘   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTP REST (credentials: include)
+┌──────────────────────────┴──────────────────────────────────────┐
+│                BACKEND — Express + TypeScript (port 3001)        │
+│                                                                  │
+│  ┌─────────┐ ┌──────────┐ ┌───────────┐ ┌──────────────────┐   │
+│  │  Auth   │ │  Sync    │ │ Analytics │ │ Risks + Off-Day  │   │
+│  │  OAuth  │ │  Mock /  │ │ Compute   │ │ Detection +      │   │
+│  │  MSAL   │ │  Graph   │ │ Daily/    │ │ Recommendations  │   │
+│  └─────────┘ └──────────┘ │ Weekly/   │ └──────────────────┘   │
+│                            │ Heatmap   │                         │
+│  ┌─────────┐ ┌──────────┐ └───────────┘ ┌──────────────────┐   │
+│  │  ML     │ │ Scheduler│               │ Admin            │   │
+│  │Forecast │ │ node-cron│               │ Team overview,   │   │
+│  │ Burnout │ │ 30min /  │               │ Risks, Email     │   │
+│  │ Scoring │ │ 2h jobs  │               └──────────────────┘   │
+│  └─────────┘ └──────────┘                                       │
+└────────────┬──────────────────────────┬─────────────────────────┘
+             │                          │ HTTP (internal)
+┌────────────┴────────────┐  ┌──────────┴──────────────────────────┐
+│  PostgreSQL 15 (Docker)  │  │  AI/ML Service — FastAPI (port 8000) │
+│  17 tables               │  │  Python 3.11 + uvicorn               │
+│                          │  │                                      │
+│  users                   │  │  POST /classify                      │
+│  oauth_tokens            │  │    Hybrid: rule-based first          │
+│  calendar_events         │  │    → bart-large-mnli (NLI) fallback  │
+│  event_classifications   │  │    Batched 8 at a time               │
+│  daily_workload          │  │                                      │
+│  weekly_workload         │  │  POST /predict/workload              │
+│  risk_alerts             │  │    RandomForestRegressor             │
+│  offday_recommendations  │  │    5-day forecast                    │
+│  workload_predictions    │  │                                      │
+│  burnout_scores          │  │  POST /score/burnout                 │
+│  sync_history            │  │    GradientBoostingClassifier        │
+│  notifications           │  │    0-100 score, 5 levels             │
+│  + 5 more tables         │  │                                      │
+└──────────────────────────┘  └──────────────────────────────────────┘
 ```
+
+### Original Planned Architecture (for reference)
+
+The original plan specified:
+- **Bull (Redis-based)** job queue → replaced with `node-cron` (in-process)
+- **Redis** for token caching + session → PostgreSQL only (Redis not actively used)
+- **Socket.io** for real-time WebSocket → not implemented (polling/refresh used)
+- **Azure infrastructure** (App Service, Key Vault, Application Insights) → local dev only
+- **Swagger UI** at `/api/docs` → not implemented
 
 ---
 
 ## Technology Stack
 
-| Layer | Technology |
-|---|---|
-| **Backend** | Node.js 20+, Express, TypeScript |
-| **Database** | PostgreSQL 15 (Docker) |
-| **AI Service** | Python 3.11+, FastAPI, uvicorn |
-| **NLI Model** | `facebook/bart-large-mnli` (Hugging Face) |
-| **ML Models** | scikit-learn (RandomForest, GradientBoosting), numpy |
-| **Frontend** | React 18, TypeScript, MUI v5, Redux Toolkit, Recharts |
-| **Scheduler** | node-cron |
-| **Email** | nodemailer (console-log fallback if SMTP not configured) |
-| **Auth** | Microsoft OAuth 2.0 (delegated, MSAL) |
+### Actual Stack
+
+| Layer | Technology | Notes vs Original Plan |
+|---|---|---|
+| **Backend runtime** | Node.js 20+, Express 4, TypeScript | As planned |
+| **Database** | PostgreSQL 15 (Docker) | As planned; Redis not actively used |
+| **Session** | express-session | Redis session store not implemented |
+| **AI Service** | Python 3.11+, FastAPI, uvicorn | As planned |
+| **NLI Model** | `facebook/bart-large-mnli` (Hugging Face) | spaCy removed — not needed with transformer-based NLI |
+| **ML Models** | scikit-learn (RandomForest, GradientBoosting), numpy | **Added** — not in original plan |
+| **Frontend** | React 18, TypeScript, MUI v5, Redux Toolkit, Recharts | As planned |
+| **Scheduler** | node-cron | **Changed** from Bull/Redis queue |
+| **Email** | nodemailer (console-log fallback) | As planned; SMTP credentials pending |
+| **Auth** | Microsoft OAuth 2.0 (MSAL, delegated) | PKCE not implemented |
+| **Token encryption** | Base64 placeholder | **Changed** from AES-256-GCM + Azure Key Vault |
 
 ---
 
-## API Endpoints
+## Database Schema
+
+### Tables (17 total)
+
+**Migration 001 — Core Schema**
+
+| Table | Purpose |
+|---|---|
+| `users` | User accounts, work schedule settings |
+| `oauth_tokens` | Encrypted Microsoft Graph refresh tokens |
+| `calendar_events` | Synced events from Microsoft Graph or mock |
+| `event_classifications` | AI classification results per event |
+| `task_types` | Reference: 10 predefined task types |
+| `project_categories` | User-defined project tags |
+| `daily_workload` | Pre-aggregated daily metrics (UPSERT on user_id, date) |
+| `weekly_workload` | Pre-aggregated weekly metrics (UPSERT on user_id, week_start_date) |
+| `risk_types` | Reference: 6 predefined risk types |
+| `risk_alerts` | Detected risk instances with lifecycle status |
+| `offday_recommendations` | Off-day suggestions with scoring and status |
+| `sync_history` | Calendar sync audit trail |
+| `notifications` | Multi-channel notification queue |
+| `notification_preferences` | Per-user notification settings |
+| `audit_logs` | Security / compliance audit trail |
+
+**Migration 002 — ML Predictions** *(added in Phase 4.5)*
+
+| Table | Purpose |
+|---|---|
+| `workload_predictions` | 5-day workload forecast per user (refreshed each sync) |
+| `burnout_scores` | Daily burnout score per user, UPSERT on (user_id, score_date) |
+
+---
+
+## API Reference
 
 ### Auth
 ```
-GET  /api/auth/connect         Get OAuth URL
-GET  /api/auth/callback        OAuth callback
-POST /api/auth/disconnect      Revoke session
-GET  /api/auth/status          Check auth state
+GET  /api/auth/connect                 Get Microsoft OAuth URL
+GET  /api/auth/callback                OAuth callback (redirects to frontend)
+POST /api/auth/disconnect              Revoke session and tokens
+GET  /api/auth/status                  Check authentication state
 ```
 
 ### Calendar Sync
 ```
-POST /api/sync/mock            Balanced mock sync (+ full pipeline)
-POST /api/sync/heavy-mock      Overloaded mock sync (+ full pipeline)
-POST /api/sync/light-mock      Underloaded mock sync (+ full pipeline)
-POST /api/sync/calendar        Real Microsoft Graph sync
-GET  /api/sync/events          List calendar events
-GET  /api/sync/status          Sync history
-DELETE /api/sync/clear-data    Wipe all user data
+POST   /api/sync/mock                  Balanced mock sync + full pipeline
+POST   /api/sync/heavy-mock            Overloaded mock sync + full pipeline
+POST   /api/sync/light-mock            Underloaded mock sync + full pipeline
+POST   /api/sync/calendar              Real Microsoft Graph sync
+POST   /api/sync/classify              Manually trigger classification only
+GET    /api/sync/events                List calendar events (paginated)
+GET    /api/sync/status                Sync history and event counts
+DELETE /api/sync/clear-data            Wipe all user data (used before re-sync)
 ```
 
 ### Analytics
 ```
-GET  /api/analytics/dashboard       All key metrics in one call
-GET  /api/analytics/daily           Daily workload rows
-GET  /api/analytics/weekly          Weekly summaries
-GET  /api/analytics/time-breakdown  Minutes per task type
-GET  /api/analytics/heatmap         Daily totals for heatmap
-POST /api/analytics/compute         Trigger workload computation
+GET  /api/analytics/dashboard          All key metrics in one call
+GET  /api/analytics/daily              Daily workload rows (date range filter)
+GET  /api/analytics/weekly             Weekly summaries (N most recent weeks)
+GET  /api/analytics/time-breakdown     Minutes per task type (date range filter)
+GET  /api/analytics/heatmap            Daily totals for heatmap (last N days)
+GET  /api/analytics/users-list         All users (for admin selector dropdown)
+POST /api/analytics/compute            Trigger workload computation
 ```
 
 ### Risks
 ```
-GET  /api/risks/active              Active alerts
-GET  /api/risks/ongoing             Acknowledged alerts
-GET  /api/risks/history             All past alerts
-POST /api/risks/detect              Run detection
-POST /api/risks/:id/acknowledge     Acknowledge alert
-POST /api/risks/:id/dismiss         Dismiss alert
+GET  /api/risks/active                 Active risk alerts
+GET  /api/risks/ongoing                Acknowledged (ongoing) alerts
+GET  /api/risks/history                All past alerts
+POST /api/risks/detect                 Run detection algorithms
+POST /api/risks/:id/acknowledge        Acknowledge alert
+POST /api/risks/:id/dismiss            Force-dismiss alert
 ```
 
 ### Off-Day Recommendations
 ```
-POST /api/offday/generate           Generate recommendations
-GET  /api/offday/balance            Entitlement balance
-GET  /api/offday/pending            Unresponded recommendations
-GET  /api/offday/all                All recommendations
-GET  /api/offday/team               Team view (admin)
-POST /api/offday/:id/accept         Accept recommendation
-POST /api/offday/:id/reject         Reject recommendation
+POST /api/offday/generate              Generate recommendations for user
+GET  /api/offday/balance               Current entitlement balance
+GET  /api/offday/pending               Unresponded recommendations
+GET  /api/offday/all                   All recommendations (history)
+GET  /api/offday/team                  All team recommendations (admin)
+POST /api/offday/:id/accept            Accept recommendation
+POST /api/offday/:id/reject            Decline recommendation
 ```
 
 ### ML Predictions
 ```
-POST /api/ml/predict                Run workload forecast + burnout score
-GET  /api/ml/workload-forecast      5-day workload forecast
-GET  /api/ml/burnout-score          Latest burnout score
+POST /api/ml/predict                   Run both ML models and store results
+GET  /api/ml/workload-forecast         5-day workload forecast (auto-generates if missing)
+GET  /api/ml/burnout-score             Latest burnout score (auto-generates if missing)
 ```
 
-### Scheduler (admin only)
+### Admin *(requires admin session)*
 ```
-GET  /api/scheduler/status          Job statuses
-POST /api/scheduler/trigger         Manually run a job
-POST /api/scheduler/toggle          Pause / resume a job
+GET  /api/admin/team-overview          All members with summary workload stats
+GET  /api/admin/team-risks             All team risk alerts (filterable by status)
+POST /api/admin/risks/:id/acknowledge  Acknowledge alert + email engineer
 ```
 
-### Admin
+### Scheduler *(requires admin session)*
 ```
-GET  /api/admin/team-overview       All members with summary stats
-GET  /api/admin/team-risks          All team risk alerts
-POST /api/admin/risks/:id/acknowledge  Acknowledge + email engineer
+GET  /api/scheduler/status             Current status of all background jobs
+POST /api/scheduler/trigger            Manually trigger a job { jobKey }
+POST /api/scheduler/toggle             Pause or resume a job { jobKey, enabled }
+```
+
+### AI/ML Service *(internal — classification-service port 8000)*
+```
+GET  /health                           Service health + NLI model status
+POST /classify                         Classify a single event (hybrid rule-based + NLI)
+POST /predict/workload                 5-day workload forecast (RandomForest)
+POST /score/burnout                    Burnout risk score 0-100 (GradientBoosting)
 ```
 
 ---
@@ -233,7 +504,7 @@ POST /api/admin/risks/:id/acknowledge  Acknowledge + email engineer
 ### Prerequisites
 - Node.js 20+
 - Python 3.11+
-- PostgreSQL 15+ (or Docker)
+- PostgreSQL 15 running on localhost:5432
 
 ### Setup
 
@@ -242,17 +513,17 @@ POST /api/admin/risks/:id/acknowledge  Acknowledge + email engineer
 git clone https://github.com/anonblader/smartcol_ai.git
 cd smartcol_ai
 
-# 2. Database
-PGPASSWORD=<pass> psql -h localhost -U postgres -d smartcol \
+# 2. Database — run both migrations
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f database/migrations/001_initial_schema.sql
+PGPASSWORD=<password> psql -h localhost -U postgres -d smartcol \
   -f database/migrations/002_ml_predictions.sql
 
 # 3. Backend
 cd backend
 npm install
-cp .env.example .env   # fill in DB credentials + Azure AD credentials
-npm run build
-node dist/server.js
+# Edit .env with DB credentials + Azure AD app credentials
+npm run build && node dist/server.js
 
 # 4. Classification service
 cd ../classification-service
@@ -262,61 +533,67 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # 5. Frontend
 cd ../frontend
-npm install
-npm start
+npm install && npm start
 ```
 
-See **STARTUP_GUIDE.md** for the full step-by-step guide including environment variables.
+Services:
+- **Frontend**: http://localhost:3000
+- **Backend**: http://localhost:3001
+- **AI Service**: http://localhost:8000
+
+See **STARTUP_GUIDE.md** for full environment variable reference and step-by-step instructions.
 
 ---
 
 ## Known Limitations
 
-| Limitation | Detail | Workaround |
+| Limitation | Detail | Workaround / Plan |
 |---|---|---|
-| Microsoft Graph 401 on personal accounts | Personal Microsoft accounts cannot access calendar via Graph API | Use mock sync (3 profiles available) |
-| Calendar Sync background job | Only works with org Microsoft 365 tenant + admin-consented app | Analytics Pipeline job keeps data fresh every 30 min |
-| Token encryption | Base64 placeholder — not production-grade | Replace with AES-256-GCM + Azure Key Vault |
-| Email alerts | Requires SMTP credentials in `.env` | Console-log fallback active for demo |
-| ML training data | Models trained on synthetic data | Accuracy improves as real historical data accumulates |
+| Microsoft Graph 401 on personal accounts | Personal Microsoft accounts cannot access calendar via Graph API | Use the 3 mock sync profiles (Balanced / Overloaded / Underloaded) |
+| Calendar Sync background job | Only works with an org Microsoft 365 tenant + admin-consented `Calendars.Read` permission | Analytics Pipeline job keeps data fresh every 30 min on existing mock data |
+| Token encryption | Base64 placeholder — not production-grade | Replace with AES-256-GCM + Azure Key Vault before production |
+| Email alerts require SMTP | Risk acknowledgement emails fall back to console-log without `EMAIL_USER` / `EMAIL_PASS` | Set credentials in `backend/.env` to enable live email |
+| ML models on synthetic data | Models trained on generated profiles — accuracy improves as real historical data accumulates | Synthetic data covers typical load patterns well for demo validation |
+| No automated test suite | No Jest / Cypress tests | 51 manual test cases documented in TEST_LOGS.md with actual output |
+| No WebSocket real-time updates | Polling / manual refresh used in frontend | Planned as future enhancement |
 
 ---
 
-## What Remains (Next Steps)
+## What Remains
 
-### 🔄 Pending
+### Phase 7 — Email SMTP Configuration *(30 minutes)*
+Add credentials to `backend/.env`:
+```
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+```
+nodemailer is already integrated — risk acknowledgement emails will go live immediately.
 
-**Email SMTP Configuration**
-- Add `EMAIL_USER` and `EMAIL_PASS` to `backend/.env`
-- Risk acknowledgement emails will go live automatically (nodemailer already integrated)
+### Phase 8 — CI/CD & Production Deployment
+- **GitHub Actions** workflow: lint + build + type-check on every push to `main`
+- **Azure App Service** for backend (Node.js) and frontend (static build or container)
+- **Azure Container Registry** for the Python classification service
+- **Azure Database for PostgreSQL** (Flexible Server, zone-redundant)
+- **Azure Key Vault** for `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET`, SMTP credentials
+- **Azure Application Insights** for request tracing and error monitoring
 
-**CI/CD Pipelines**
-- GitHub Actions workflow for build + test on push
-- Separate staging and production environments
-
-**Production Deployment (Azure)**
-- Azure App Service for backend + frontend
-- Azure Database for PostgreSQL (Flexible Server)
-- Azure Container Registry for classification service
-- Azure Key Vault for secrets (replace Base64 token encryption)
-- Azure Application Insights for monitoring
-
-### 🔮 Future Enhancements
+### Future Enhancements
 - Real-time push notifications (WebSocket / FCM)
-- Redis caching for analytics queries
-- Active learning loop — use user-corrected classifications as training data
-- Multi-tenant support for multiple organisations
+- Redis caching for analytics queries (performance at scale)
+- Active learning loop — user-corrected classifications fed back as training data
+- Weekly automated summary email (Monday 8 AM scheduled job)
 - Mobile-responsive PWA
 
 ---
 
 ## Documentation
 
-| Document | Contents |
+| File | Description |
 |---|---|
-| `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes, all 6 phases |
+| `README.md` | This file — project overview, architecture, API reference, change log |
+| `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes (Phases 1–6) |
 | `TEST_LOGS.md` | 51 test cases across all phases with actual terminal output |
-| `STARTUP_GUIDE.md` | Step-by-step local setup instructions |
+| `STARTUP_GUIDE.md` | Step-by-step local setup with environment variable reference |
 
 ---
 
