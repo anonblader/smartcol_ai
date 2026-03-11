@@ -26,5 +26,8 @@ logs/
 .vscode/
 .idea/
 
-# Claude Code instructions — local only, not for version control
+# Claude Code — all local, never commit
 CLAUDE.md
+.claude/
+**/.claude/
+*claude*
