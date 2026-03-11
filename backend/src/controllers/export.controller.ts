@@ -113,8 +113,8 @@ function buildRecommendations(m: TeamMember): string[] {
 
 // ── Fetch top-5 team data ──────────────────────────────────────────────────────
 
-async function fetchTop5Team(): Promise<TeamMember[]> {
-  // Top 5 real users by avg daily workload (last 30 days)
+async function fetchTeamMembers(): Promise<TeamMember[]> {
+  // All real users with workload data in the last 30 days, ranked by avg daily load
   const top5 = await db.queryMany<{
     id: string; display_name: string; email: string;
     avg_daily_minutes: string; total_overtime_minutes: string;
@@ -128,7 +128,6 @@ async function fetchTop5Team(): Promise<TeamMember[]> {
      FROM daily_workload dw
      JOIN users u ON u.id = dw.user_id
      WHERE dw.date >= CURRENT_DATE - INTERVAL '30 days'
-       AND u.email NOT LIKE '%@smartcol-test.com'
      GROUP BY u.id, u.display_name, u.email
      HAVING COUNT(dw.date) > 0
      ORDER BY avg_daily_minutes DESC
@@ -254,8 +253,10 @@ export async function exportAnalytics(req: Request, res: Response): Promise<void
       ),
     ]);
 
-    // ── Fetch team data for admins ────────────────────────────────────────────
-    const teamMembers = adminView ? await fetchTop5Team() : [];
+    // ── Fetch team data for admins (only when not viewing a specific user) ────
+    // If admin passed ?userId= they want an individual report — no team section.
+    const isIndividualView = !!req.query.userId;
+    const teamMembers = adminView && !isIndividualView ? await fetchTeamMembers() : [];
 
     // ─────────────────────────────────────────────────────────────────────────
     // CSV
@@ -305,7 +306,7 @@ export async function exportAnalytics(req: Request, res: Response): Promise<void
 
       // Admin: append team overview section
       if (adminView && teamMembers.length > 0) {
-        lines.push('', '', 'TEAM WORKLOAD OVERVIEW — TOP 5 HEAVIEST LOADED ENGINEERS (Last 30 Days)');
+        lines.push('', '', `TEAM WORKLOAD OVERVIEW — TOP 5 MOST OVERLOADED (Last 30 Days)`);
         lines.push('Name,Email,Avg Daily (hrs),High Load Days,Overtime (hrs),Off-Days Earned,Off-Days Used,Off-Days Available,Active Risks,Burnout Score');
         for (const m of teamMembers) {
           lines.push([
@@ -442,7 +443,7 @@ export async function exportAnalytics(req: Request, res: Response): Promise<void
 
         doc.fontSize(16).font('Helvetica-Bold').text('Team Workload Overview', { align: 'center' });
         doc.fontSize(10).font('Helvetica').fillColor('#64748b')
-          .text('Top 5 heaviest-loaded engineers — last 30 days', { align: 'center' });
+          .text(`Top 5 most overloaded engineers — last 30 days`, { align: 'center' });
         doc.fillColor('#000000').moveDown(1.5);
 
         for (const m of teamMembers) {

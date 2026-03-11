@@ -66,22 +66,6 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
 
-  const handleExport = async (fmt: 'csv' | 'pdf') => {
-    try {
-      const res = await analyticsApi.export(fmt, userId);
-      const url = URL.createObjectURL(res.data);
-      const a   = document.createElement('a');
-      a.href     = url;
-      // Use local time so the filename reflects the user's clock, not UTC
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const ts  = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-      a.download = `smartcol-analytics-${ts}.${fmt}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch { /* silent — server will respond with error JSON if needed */ }
-  };
-
   const fetchAll = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -131,22 +115,7 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
           <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6" fontWeight={600}>Daily Workload</Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button size="small" variant="outlined" onClick={fetchAll} sx={{ fontSize: 12 }}>Refresh</Button>
-                <Tooltip title="Download CSV">
-                  <Button size="small" variant="outlined" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
-                    onClick={() => handleExport('csv')} sx={{ fontSize: 12 }}>
-                    CSV
-                  </Button>
-                </Tooltip>
-                <Tooltip title="Download PDF report">
-                  <Button size="small" variant="contained" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
-                    onClick={() => handleExport('pdf')}
-                    sx={{ fontSize: 12, background: '#2563eb', '&:hover': { background: '#1d4ed8' } }}>
-                    PDF
-                  </Button>
-                </Tooltip>
-              </Box>
+              <Button size="small" variant="outlined" onClick={fetchAll} sx={{ fontSize: 12 }}>Refresh</Button>
             </Box>
             {daily.length > 0 ? (
               <TableContainer sx={{ maxHeight: 360 }}>
@@ -628,11 +597,56 @@ export const Analytics: React.FC = () => {
     }).catch(() => {});
   }, [isAdmin]);
 
+  const handleExport = async (fmt: 'csv' | 'pdf') => {
+    try {
+      const res = await analyticsApi.export(fmt, selectedUserId || undefined);
+      const url = URL.createObjectURL(res.data);
+      const a   = document.createElement('a');
+      a.href     = url;
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const ts  = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      const nameSlug = isAdmin
+        ? selectedUserId && selectedUserName
+          ? selectedUserName.replace(/\s+/g, '-')
+          : 'Team-Report'
+        : 'My-Report';
+      a.download = `smartcol-${nameSlug}-${ts}.${fmt}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent */ }
+  };
+
+  // Dynamic export label
+  const exportLabel = isAdmin
+    ? selectedUserId && selectedUserName
+      ? `${selectedUserName.split(' ')[0]}'s Report`
+      : 'Team Report'
+    : 'My Report';
+
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>
-        {isAdmin ? 'Team Analytics' : 'My Analytics'}
-      </Typography>
+      {/* Page header with export buttons */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+        <Typography variant="h5" fontWeight={700}>
+          {isAdmin ? 'Team Analytics' : 'My Analytics'}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Tooltip title={`Download ${exportLabel} as CSV`}>
+            <Button size="small" variant="outlined" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+              onClick={() => handleExport('csv')} sx={{ fontSize: 12 }}>
+              CSV — {exportLabel}
+            </Button>
+          </Tooltip>
+          <Tooltip title={`Download ${exportLabel} as PDF`}>
+            <Button size="small" variant="contained" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+              onClick={() => handleExport('pdf')}
+              sx={{ fontSize: 12, background: '#2563eb', '&:hover': { background: '#1d4ed8' } }}>
+              PDF — {exportLabel}
+            </Button>
+          </Tooltip>
+        </Box>
+      </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         {isAdmin
           ? 'Select a team member to view their detailed workload breakdown'
