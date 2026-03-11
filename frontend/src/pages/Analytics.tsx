@@ -72,7 +72,11 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
       const url = URL.createObjectURL(res.data);
       const a   = document.createElement('a');
       a.href     = url;
-      a.download = `smartcol-analytics-${new Date().toISOString().split('T')[0]}.${fmt}`;
+      // Use local time so the filename reflects the user's clock, not UTC
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const ts  = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      a.download = `smartcol-analytics-${ts}.${fmt}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch { /* silent — server will respond with error JSON if needed */ }
