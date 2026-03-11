@@ -40,6 +40,8 @@ export const analyticsApi = {
   getHeatmap: (params?: Record<string, unknown>) =>
     apiClient.get('/analytics/heatmap', { params }),
   compute: () => apiClient.post('/analytics/compute'),
+  export: (format: 'csv' | 'pdf', userId?: string) =>
+    apiClient.get('/analytics/export', { params: { format, ...(userId ? { userId } : {}) }, responseType: 'blob' }),
 };
 
 // Off-Day Recommendation API

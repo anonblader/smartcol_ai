@@ -12,6 +12,7 @@ import {
   getHeatmap,
   getDashboard,
 } from '../controllers/analytics.controller';
+import { exportAnalytics } from '../controllers/export.controller';
 
 const router = Router();
 
@@ -35,5 +36,8 @@ router.get('/time-breakdown', getTimeBreakdown);
 
 // GET /api/analytics/heatmap — daily totals for heatmap (query: days)
 router.get('/heatmap', getHeatmap);
+
+// GET /api/analytics/export — download CSV or PDF (query: format=csv|pdf, userId)
+router.get('/export', exportAnalytics);
 
 export default router;

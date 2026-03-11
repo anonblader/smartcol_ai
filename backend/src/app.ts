@@ -6,7 +6,6 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.config';
-import { logger } from './config/monitoring.config';
 import authRoutes from './routes/auth.routes';
 import syncRoutes from './routes/sync.routes';
 import calendarRoutes from './routes/calendar.routes';
@@ -20,6 +19,8 @@ import schedulerRoutes            from './routes/scheduler.routes';
 import notificationSettingsRoutes from './routes/notification-settings.routes';
 import feedbackRoutes             from './routes/feedback.routes';
 import { requireAdmin }    from './middleware/admin.middleware';
+import { requireAuth }     from './middleware/auth.middleware';
+import { errorMiddleware } from './middleware/error.middleware';
 
 const app = express();
 
@@ -94,22 +95,19 @@ app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
 
 // API routes (these match your frontend api.ts expectations)
 app.use('/api/auth', authRoutes);
-app.use('/api/sync', syncRoutes);
-app.use('/api/calendar', calendarRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/risks', risksRoutes);
-app.use('/api/admin',  requireAdmin, adminRoutes);
-app.use('/api/offday', offdayRoutes);
-app.use('/api/ml',        mlPredictionRoutes);
-app.use('/api/scheduler',      requireAdmin, schedulerRoutes);
-app.use('/api/notifications',  requireAdmin, notificationSettingsRoutes);
-app.use('/api/feedback',       feedbackRoutes);
-app.use('/api/test',      requireAdmin, testRoutes);
+app.use('/api/sync',      requireAuth, syncRoutes);
+app.use('/api/calendar',  requireAuth, calendarRoutes);
+app.use('/api/analytics', requireAuth, analyticsRoutes);
+app.use('/api/risks',     requireAuth, risksRoutes);
+app.use('/api/admin',     requireAdmin, adminRoutes);
+app.use('/api/offday',    requireAuth, offdayRoutes);
+app.use('/api/ml',        requireAuth, mlPredictionRoutes);
+app.use('/api/scheduler',     requireAdmin, schedulerRoutes);
+app.use('/api/notifications', requireAdmin, notificationSettingsRoutes);
+app.use('/api/feedback',      requireAuth, feedbackRoutes);
+app.use('/api/test',          requireAdmin, testRoutes);
 
-// Error logging
-app.use((err: any, _req: any, res: any, _next: any) => {
-  logger.error('Unhandled error', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
+// Centralised error handler (must be last)
+app.use(errorMiddleware);
 
 export default app;

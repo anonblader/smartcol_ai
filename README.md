@@ -33,7 +33,8 @@
 | 6 | Background Job Scheduling | ✅ Complete |
 | 7 | Email Alert Notification Management | ✅ Complete |
 | 8 | Swagger UI, Weekly Digest & Active Learning | ✅ Complete |
-| 9 | CI/CD & Production Deployment | 🔮 Future Implementation |
+| 9 | Robustness & UX Enhancements | ✅ Complete |
+| 10 | CI/CD & Production Deployment | 🔮 Future Implementation |
 
 ---
 
@@ -125,6 +126,37 @@ Both models persist results to `workload_predictions` and `burnout_scores` table
 | Low Focus Time false positive with no data | Added `work_minutes = 0` guard before triggering |
 | ML-first classifier strategy caused slow bulk classification | Flipped to rule-based first; NLI only for ambiguous events |
 | Heavy mock had 99 events (too many for real-time classification) | Redesigned to 3 longer events/day = 54 total, same 750 min/day |
+
+### Phase 9 — Robustness & UX Enhancements
+
+#### Centralised Error Middleware (`error.middleware.ts`)
+
+- `AppError` class — throw from any controller with a typed HTTP status code, error code, and message; caught and serialised consistently
+- `errorMiddleware` — registered as the final Express handler in `app.ts`; replaces the previous ad-hoc inline handler with a uniform `{ error, message }` JSON shape across all routes
+
+#### Centralised Auth Middleware (`auth.middleware.ts`)
+
+- `requireAuth` — single function that checks `req.session.user_id` and returns `401 Unauthorized` if missing
+- Applied to all protected route groups in `app.ts`: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`, `/api/calendar`; admin routes (`/api/admin`, `/api/scheduler`, `/api/notifications`, `/api/test`) continue to use the existing `requireAdmin` guard which already includes the session check
+
+#### Events Page — Search & Filter
+
+- Keyword search box — filters the displayed event table by event subject and location (case-insensitive, client-side, instant)
+- Task type dropdown filter — narrows events by any of the 10 task types
+- Event counter chip updates to show `filtered / total` (e.g. `3 / 54 events`)
+- "No events match your search or filter" empty state row shown when no results
+
+#### Analytics Export — CSV & PDF
+
+- `GET /api/analytics/export?format=csv` — returns a downloadable CSV file containing:
+  - Daily Workload (last 30 days) with total, work, meeting, focus, overtime hours and status
+  - Weekly Summary (last 8 weeks) with total, work, overtime hours, events, and meeting counts
+  - Time Breakdown by Task Type with total hours and event count
+- `GET /api/analytics/export?format=pdf` — returns a formatted PDF report (via `pdfkit`) with the same three sections in a tabular layout with section headers and dividers
+- **CSV** and **PDF** download buttons added to the Analytics page next to the Daily Workload refresh button; both respect the currently selected user (personal or admin view)
+- New dependency: `pdfkit@^0.17.2` + `@types/pdfkit@^0.17.5`
+
+---
 
 ### Phase 8 — Swagger UI, Weekly Digest & Active Learning
 
@@ -516,6 +548,7 @@ GET  /api/analytics/time-breakdown     Minutes per task type (date range filter)
 GET  /api/analytics/heatmap            Daily totals for heatmap (last N days)
 GET  /api/analytics/users-list         All users (for admin selector dropdown)
 POST /api/analytics/compute            Trigger workload computation
+GET  /api/analytics/export             Download CSV or PDF report (?format=csv|pdf)
 ```
 
 ### Risks
@@ -690,6 +723,7 @@ Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 
 | Push / WebSocket notifications | Real-time in-app alerts without page refresh |
 | Redis caching | Cache analytics queries for performance at scale |
 | Mobile-responsive PWA | Progressive Web App for mobile engineer access |
+| Token encryption | Replace Base64 placeholder with AES-256-GCM + Azure Key Vault before production |
 
 ---
 
@@ -705,4 +739,4 @@ Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 
 
 ---
 
-*Last updated: March 9, 2026 | SmartCol AI Capstone Project*
+Last updated: March 12, 2026 | SmartCol AI Capstone Project

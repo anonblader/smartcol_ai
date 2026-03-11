@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Paper, Typography, CircularProgress, Alert, Chip, Grid,
-  Select, MenuItem, FormControl, Tooltip, IconButton, Divider,
+  Select, MenuItem, FormControl, InputLabel, Tooltip, IconButton, Divider,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Snackbar,
+  Snackbar, TextField, InputAdornment,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import EditNoteIcon           from '@mui/icons-material/EditNote';
 import AutoFixHighIcon        from '@mui/icons-material/AutoFixHigh';
@@ -170,9 +172,20 @@ function FeedbackStats({ userId }: { userId?: string }) {
 // ── Main Events page ──────────────────────────────────────────────────────────
 
 export const Events: React.FC = () => {
-  const [events,  setEvents]  = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [snack,   setSnack]   = useState<string | null>(null);
+  const [events,         setEvents]         = useState<any[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [snack,          setSnack]          = useState<string | null>(null);
+  const [searchQuery,    setSearchQuery]    = useState('');
+  const [filterTypeId,   setFilterTypeId]   = useState<number | ''>('');
+
+  const filteredEvents = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return events.filter(ev => {
+      const matchesSearch = !q || (ev.subject || '').toLowerCase().includes(q) || (ev.location || '').toLowerCase().includes(q);
+      const matchesType   = filterTypeId === '' || ev.task_type_id === filterTypeId;
+      return matchesSearch && matchesType;
+    });
+  }, [events, searchQuery, filterTypeId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -226,14 +239,45 @@ export const Events: React.FC = () => {
 
       {/* Events table */}
       <Paper sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
-        <Box sx={{ p: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6" fontWeight={600}>
-            Classified Events
-            {events.length > 0 && (
-              <Chip label={`${events.length} events`} size="small"
-                sx={{ ml: 1.5, height: 20, fontSize: 10, background: '#f1f5f9', color: '#475569' }} />
-            )}
-          </Typography>
+        <Box sx={{ p: 2.5 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" fontWeight={600}>
+              Classified Events
+              {events.length > 0 && (
+                <Chip label={`${filteredEvents.length} / ${events.length}`} size="small"
+                  sx={{ ml: 1.5, height: 20, fontSize: 10, background: '#f1f5f9', color: '#475569' }} />
+              )}
+            </Typography>
+          </Box>
+          {/* Filter bar */}
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              placeholder="Search events…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: '#94a3b8' }} /></InputAdornment> }}
+              sx={{ minWidth: 220 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel><Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><FilterListIcon sx={{ fontSize: 14 }} />Task type</Box></InputLabel>
+              <Select
+                value={filterTypeId}
+                label="Task type filter"
+                onChange={e => setFilterTypeId(e.target.value as number | '')}
+              >
+                <MenuItem value="">All types</MenuItem>
+                {TASK_TYPES.map(t => (
+                  <MenuItem key={t.id} value={t.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: t.color, flexShrink: 0 }} />
+                      {t.name}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
         </Box>
         <Divider />
 
@@ -262,7 +306,13 @@ export const Events: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {events.map((ev) => {
+                {filteredEvents.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      No events match your search or filter.
+                    </TableCell>
+                  </TableRow>
+                ) : filteredEvents.map((ev) => {
                   const color = ev.color_code || PRIMARY;
                   const isCorrected = ev.feedback_id || ev.classification_method === 'user_feedback';
                   return (

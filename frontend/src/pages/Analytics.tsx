@@ -16,6 +16,7 @@ import { format, parseISO } from 'date-fns';
 import BeachAccessIcon from '@mui/icons-material/BeachAccess';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
+import DownloadIcon from '@mui/icons-material/Download';
 import { Tabs, Tab } from '@mui/material';
 
 const PRIMARY = '#2563eb';
@@ -64,6 +65,18 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
   const [heatmap,   setHeatmap]   = useState<any[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
+
+  const handleExport = async (fmt: 'csv' | 'pdf') => {
+    try {
+      const res = await analyticsApi.export(fmt, userId);
+      const url = URL.createObjectURL(res.data);
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = `smartcol-analytics-${new Date().toISOString().split('T')[0]}.${fmt}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent — server will respond with error JSON if needed */ }
+  };
 
   const fetchAll = useCallback(() => {
     setLoading(true);
@@ -114,7 +127,22 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
           <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #e2e8f0' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6" fontWeight={600}>Daily Workload</Typography>
-              <Button size="small" variant="outlined" onClick={fetchAll} sx={{ fontSize: 12 }}>Refresh</Button>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button size="small" variant="outlined" onClick={fetchAll} sx={{ fontSize: 12 }}>Refresh</Button>
+                <Tooltip title="Download CSV">
+                  <Button size="small" variant="outlined" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+                    onClick={() => handleExport('csv')} sx={{ fontSize: 12 }}>
+                    CSV
+                  </Button>
+                </Tooltip>
+                <Tooltip title="Download PDF report">
+                  <Button size="small" variant="contained" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+                    onClick={() => handleExport('pdf')}
+                    sx={{ fontSize: 12, background: '#2563eb', '&:hover': { background: '#1d4ed8' } }}>
+                    PDF
+                  </Button>
+                </Tooltip>
+              </Box>
             </Box>
             {daily.length > 0 ? (
               <TableContainer sx={{ maxHeight: 360 }}>
