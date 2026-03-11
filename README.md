@@ -136,69 +136,6 @@ Both models persist results to `workload_predictions` and `burnout_scores` table
 | ML-first classifier strategy caused slow bulk classification | Flipped to rule-based first; NLI only for ambiguous events |
 | Heavy mock had 99 events (too many for real-time classification) | Redesigned to 3 longer events/day = 54 total, same 750 min/day |
 
-### Phase 8 — Swagger UI, Weekly Digest & Active Learning
-
-#### Swagger UI (`GET /api/docs`)
-
-- Full OpenAPI 3.0 interactive API documentation served via `swagger-ui-express`
-- 45 endpoints documented across 10 tags with descriptions, parameters, and example responses
-- Raw JSON spec available at `GET /api/docs.json` for tooling integration
-- Custom SmartCol AI branding in the Swagger UI header
-
-#### Weekly Digest Email (Monday 08:00)
-
-- Third background job added to scheduler: `0 8 * * 1`
-- Each Monday, sends each engineer a workload summary for the previous week
-- Email includes: 4-column metrics grid (work / overtime / meetings / focus), active risk list, ML burnout score indicator, off-day balance
-- Fully respects the `weekly_digest` admin toggle in notification settings
-- Console-log output in demo mode (no SMTP needed to see it working)
-
-#### Active Learning — Classification Feedback Loop
-
-- Engineers can correct any AI-misclassified event from the new **Events** page (sidebar)
-- Correction applied immediately; all events with the same subject title auto-corrected
-- Stored in `classification_feedback` table (migration 004)
-- Future pipeline runs use stored corrections **before** calling the AI — known subjects are resolved via pattern matching (`pattern-learning-v1.0`) without any API call
-- **Events page features:** classified event table with method badges (`rule_based` / `ml_model` / `✓ You` / `🔁 Learned`), confidence %, inline correction dropdown, corrected-event checkmark
-- **Feedback Stats card:** total corrections, unique patterns learned, events auto-corrected, recent corrections breakdown
-
----
-
-### Phase 7 — Email Alert Notification Management *(partial)*
-
-Admin-configurable email notification system with 6 alert types, stored in the `email_alert_settings` table. All alerts fall back to structured console-log output when SMTP is not configured, making the feature fully demonstrable without credentials.
-
-#### 6 alert types (admin toggles each on/off individually)
-
-| Alert | Default | Trigger |
-| --- | --- | --- |
-| New Risk Alert | ON | When any new risk is detected in an engineer's workload |
-| Risk Acknowledged | ON | When admin acknowledges an engineer's risk alert |
-| Risk Dismissed | OFF | When admin dismisses an engineer's risk alert |
-| Burnout Score Warning | ON | When ML burnout score exceeds 75/100 |
-| High Workload Day | OFF | When a single day exceeds 10 hours (600 min) |
-| Weekly Digest | Coming soon | Planned future weekly summary |
-
-#### Trigger hooks added to pipeline
-
-- `risks.service.ts` — fires `risk_detected` on every newly created alert
-- `ml-prediction.service.ts` — fires `burnout_warning` when score > 75
-- `analytics.service.ts` — fires `high_workload_day` when daily work > 600 min
-- `admin.controller.ts` — fires `risk_acknowledged` and `risk_dismissed` on admin actions
-
-#### Admin Settings UI (Settings page)
-
-- Grouped toggle switches per alert type with colour-coded categories
-- Last triggered timestamp + total trigger count per alert
-- **Send Test Email** button (sends to the logged-in admin's account)
-- Demo mode info banner (console output until SMTP is configured)
-
-**New DB table:** `email_alert_settings` (migration 003) with seeded defaults.
-
-**SMTP is now configured and active.** All 6 alert types (including weekly digest) deliver real HTML emails via Gmail SMTP. A `resolveEmail()` helper decodes Microsoft EXT UPN addresses (e.g. `user_gmail.com#EXT#@tenant`) back to real Gmail addresses before sending.
-
----
-
 ### Phase 6 — Background Job Scheduling
 
 **Two scheduled jobs (node-cron), started on server startup:**
@@ -218,6 +155,66 @@ Admin-configurable email notification system with 6 alert types, stored in the `
 
 - Live status card per job, auto-refreshes every 15 s
 - **Run Now** button, **Pause / Resume** toggle per job
+
+---
+
+### Phase 7 — Email Alert Notification Management
+
+Admin-configurable email notification system with 6 alert types, stored in the `email_alert_settings` table. All alerts fall back to structured console-log output when SMTP is not configured, making the feature fully demonstrable without credentials.
+
+#### 6 alert types (admin toggles each on/off individually)
+
+| Alert | Default | Trigger |
+| --- | --- | --- |
+| New Risk Alert | ON | When any new risk is detected in an engineer's workload |
+| Risk Acknowledged | ON | When admin acknowledges an engineer's risk alert |
+| Risk Dismissed | OFF | When admin dismisses an engineer's risk alert |
+| Burnout Score Warning | ON | When ML burnout score exceeds 75/100 |
+| High Workload Day | OFF | When a single day exceeds 10 hours (600 min) |
+| Weekly Digest | ON | Monday 08:00 scheduled job; HTML email with metrics, risks, burnout score, off-day balance |
+
+#### Trigger hooks added to pipeline
+
+- `risks.service.ts` — fires `risk_detected` on every newly created alert
+- `ml-prediction.service.ts` — fires `burnout_warning` when score > 75
+- `analytics.service.ts` — fires `high_workload_day` when daily work > 600 min
+- `admin.controller.ts` — fires `risk_acknowledged` and `risk_dismissed` on admin actions
+
+#### Admin Settings UI (Settings page)
+
+- Grouped toggle switches per alert type with colour-coded categories
+- Last triggered timestamp + total trigger count per alert
+- **Send Test Email** button (sends to the logged-in admin's account)
+- Gmail SMTP configured and active — all 6 alert types deliver real HTML emails
+
+**New DB table:** `email_alert_settings` (migration 003) with seeded defaults.
+
+---
+
+### Phase 8 — Swagger UI, Weekly Digest & Active Learning
+
+#### Swagger UI (`GET /api/docs`)
+
+- Full OpenAPI 3.0 interactive API documentation served via `swagger-ui-express`
+- 45 endpoints documented across 10 tags with descriptions, parameters, and example responses
+- Raw JSON spec available at `GET /api/docs.json` for tooling integration
+- Custom SmartCol AI branding in the Swagger UI header
+
+#### Weekly Digest Email (Monday 08:00)
+
+- Third background job added to scheduler: `0 8 * * 1`
+- Each Monday, sends each engineer a workload summary for the previous week
+- Email includes: 4-column metrics grid (work / overtime / meetings / focus), active risk list, ML burnout score indicator, off-day balance
+- Fully respects the `weekly_digest` admin toggle in notification settings
+
+#### Active Learning — Classification Feedback Loop
+
+- Engineers can correct any AI-misclassified event from the new **Events** page (sidebar)
+- Correction applied immediately; all events with the same subject title auto-corrected
+- Stored in `classification_feedback` table (migration 004)
+- Future pipeline runs use stored corrections **before** calling the AI — known subjects are resolved via pattern matching (`pattern-learning-v1.0`) without any API call
+- **Events page features:** classified event table with method badges (`rule_based` / `ml_model` / `✓ You` / `🔁 Learned`), confidence %, inline correction dropdown, corrected-event checkmark
+- **Feedback Stats card:** total corrections, unique patterns learned, events auto-corrected, recent corrections breakdown
 
 ---
 
@@ -742,13 +739,7 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 
 ## What Remains
 
-> The following items are scoped as **future implementations** and will be documented in the final project report. All groundwork (architecture, hooks, and infrastructure) for these features is already in place.
-
----
-
-### Email SMTP — Complete
-
-Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 6 alert types deliver real HTML emails to engineers. A Microsoft EXT UPN decoder ensures emails reach the correct Gmail address for personal Microsoft account users.
+> The following items are scoped as **future implementations**. All groundwork (architecture, hooks, and infrastructure) for these features is already in place.
 
 ---
 
