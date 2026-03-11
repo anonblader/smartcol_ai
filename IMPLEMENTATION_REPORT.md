@@ -3271,9 +3271,10 @@ UNIQUE(event_id)  -- re-correction overwrites previous
 
 ---
 
-## Final Project Status (Phases 1–8 Complete)
+## Final Project Status (Phases 1–9 Complete)
 
 ### ✅ Fully Implemented & Tested
+
 - Microsoft OAuth 2.0 authentication with session management
 - Calendar sync — real Microsoft Graph + 3 mock workload profiles
 - **Hybrid AI event classification** — rule-based first (≥ 0.72), NLI for ambiguous; batched 8 at a time
@@ -3290,16 +3291,27 @@ UNIQUE(event_id)  -- re-correction overwrites previous
 - Admin tabbed dashboard — per-member workload detail on tab click
 - Admin risk acknowledgement + dismissal with email notification
 - Multi-user test framework with seeded profiles and pipeline runner
+- **Centralised error middleware** — `AppError` class + `errorMiddleware`; consistent `{ error, message }` JSON responses, no stack trace exposure
+- **Centralised auth middleware** — `requireAuth` on all protected route groups; uniform 401 enforcement
+- **Events page search & filter** — keyword search + task type dropdown, client-side, instant; `filtered / total` counter
+- **Analytics export (CSV & PDF)** — context-aware: individual or team report with off-day balance, burnout scores, and auto-generated manager recommendations
 
-### 🔒 Security Hardening (post-Phase 8)
+### 🔒 Security Hardening
 
-A structured security audit was conducted using **manual code review** against the OWASP Top 10, **`npm audit`** for dependency scanning, **`curl`** for header/IDOR verification, and **Browser DevTools** for cookie inspection. 5 vulnerabilities were identified and fixed:
+A structured security audit was conducted using **manual code review** against the OWASP Top 10, **`npm audit`** for dependency scanning, **`curl`** for header/IDOR verification, and **Browser DevTools** for cookie inspection. 5 vulnerabilities were identified and fixed post-Phase 8, with 2 additional security improvements added in Phase 9:
+
+**Phase 8 security fixes (5 vulnerabilities):**
 
 - Session cookie flags added (`httpOnly`, `sameSite:lax`, `secure` in prod, 8h maxAge)
 - Helmet.js applied (was installed but never called — 8 security headers now active)
 - Rate limiting registered (`express-rate-limit`: 500/100 dev, 100/20 prod per 15 min)
 - HTML injection in email templates fixed via `esc()` helper on all user-controlled data
 - IDOR: `?userId=` query param bypass fixed — session required before it is honoured
+
+**Phase 9 security additions:**
+
+- Centralised `requireAuth` middleware on all non-admin protected route groups — eliminates ad-hoc session checks in controllers
+- Centralised `errorMiddleware` — no internal error details or stack traces exposed to clients
 
 `npm audit` results: **0 critical, 0 moderate** — 6 high-severity findings in `@typescript-eslint` dev-only linting tools (not in production runtime).
 
