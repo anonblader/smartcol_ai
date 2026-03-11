@@ -3311,9 +3311,8 @@ See `SECURITY_REPORT.md` for the full audit methodology, OWASP Top 10 coverage, 
 - Microsoft EXT UPN addresses decoded to real Gmail via `resolveEmail()` before sending
 - ML models trained on synthetic data — accuracy improves with real historical data
 
-### 🔮 Future Implementations (Phase 9 and Beyond)
-- ~~**Email SMTP activation**~~ — ✅ Complete; Gmail SMTP configured with App Password, all 6 alert types delivering real emails
-- **Automated test suite** — Jest unit tests for backend business logic + Cypress E2E; integrated into GitHub Actions CI. Python classification service already has 17/17 passing pytest tests.
+### 🔮 Future Implementations
+- **Automated test suite** — Jest unit tests for backend business logic + Cypress E2E; integrated into GitHub Actions CI
 - **CI/CD pipelines** — GitHub Actions on push to `main` (lint + build + type-check + test)
 - **Production deployment** — Azure App Service, Container Registry, PostgreSQL, Key Vault, Application Insights
 - **Real calendar sync** — organisational Microsoft 365 tenant
@@ -3322,4 +3321,42 @@ See `SECURITY_REPORT.md` for the full audit methodology, OWASP Top 10 coverage, 
 
 ---
 
-*Last updated: March 9, 2026 | SmartCol AI Capstone Project*
+## Phase 9 — Robustness & UX Enhancements
+
+**Date:** March 12, 2026
+
+### 9.1 Centralised Error Middleware
+
+Implemented `AppError` class and `errorMiddleware` in `backend/src/middleware/error.middleware.ts`. Registered as the final Express handler in `app.ts`, replacing the previous ad-hoc inline error handler. Controllers can throw `new AppError(statusCode, code, message)` and receive consistent `{ error, message }` JSON responses. Unexpected exceptions are caught, logged via Winston, and returned as generic 500 responses — no stack traces exposed to clients.
+
+### 9.2 Centralised Auth Middleware
+
+Implemented `requireAuth` in `backend/src/middleware/auth.middleware.ts`. Applied to all protected route groups in `app.ts`: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`, `/api/calendar`. Returns `401 Unauthorized` if `req.session.user_id` is absent. Admin routes continue using `requireAdmin` which already includes the session check.
+
+### 9.3 Events Page — Search & Filter
+
+Added client-side keyword search and task type dropdown filter to `frontend/src/pages/Events.tsx`. Both filters use `useMemo` on the already-loaded events array — instant, no additional API calls. Event counter chip shows `filtered / total`. Empty state row shown when no results match.
+
+### 9.4 Analytics Export — CSV & PDF
+
+New endpoint `GET /api/analytics/export?format=csv|pdf` in `backend/src/controllers/export.controller.ts`.
+
+Context-aware behaviour:
+
+| Context | Report content |
+| --- | --- |
+| Admin, no `?userId` param | Admin's own individual data + Team Workload Overview |
+| Admin, with `?userId` param | Selected user's individual data only |
+| Engineer | Own individual data only |
+
+Individual sections include Daily Workload (last 30 days), Weekly Summary (last 8 weeks), and Time Breakdown by Task Type — each row tagged with User and View columns. All dates formatted as `YYYY-MM-DD` via `fmtDate()` helper (strips PostgreSQL timezone suffixes).
+
+Team Workload Overview (admin team report): top 5 most overloaded engineers by average daily load. Per-member data: avg daily hours, high-load days, overtime, off-day balance, active risks, burnout score. Auto-generated Manager Recommendations based on 7 rule-based conditions.
+
+Frontend: export buttons at the top-right of the Analytics page with dynamic labels and filenames that include context slug + local timestamp (e.g. `smartcol-Team-Report-2026-03-12_01-05-22.pdf`). PDF section headers pinned to `x=50` to prevent cursor drift.
+
+New dependency: `pdfkit@^0.17.2`, `@types/pdfkit@^0.17.5`
+
+---
+
+Last updated: March 12, 2026 | SmartCol AI Capstone Project

@@ -169,7 +169,47 @@ Applied to: `/api/admin/*`, `/api/scheduler/*`, `/api/notifications/*`, `/api/te
 
 ---
 
-### 5. Secrets Excluded from Logs ✅
+### 5. Centralised Auth Middleware ✅ *(added Phase 9)*
+
+A dedicated `requireAuth` middleware (`auth.middleware.ts`) centralises session validation, replacing ad-hoc checks scattered across controllers. All protected route groups in `app.ts` now pass through this guard before reaching any controller logic.
+
+```typescript
+export function requireAuth(req, res, next) {
+  if (!req.session?.user_id) {
+    return res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
+  }
+  next();
+}
+```
+
+Applied to: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`, `/api/calendar`
+
+**Status:** ✅ Consistent 401 enforcement at the middleware layer across all protected routes.
+
+---
+
+### 6. Centralised Error Middleware ✅ *(added Phase 9)*
+
+A typed `AppError` class and `errorMiddleware` function (`error.middleware.ts`) are registered as the final Express handler. All unhandled exceptions return a consistent `{ error, message }` JSON response — no stack traces or internal details are exposed to clients.
+
+```typescript
+export class AppError extends Error {
+  constructor(public statusCode: number, public code: string, message: string) { ... }
+}
+export function errorMiddleware(err, _req, res, _next) {
+  if (err instanceof AppError) {
+    return res.status(err.statusCode).json({ error: err.code, message: err.message });
+  }
+  logger.error('Unhandled error', { message: err.message });
+  res.status(500).json({ error: 'InternalServerError', message: 'An unexpected error occurred' });
+}
+```
+
+**Status:** ✅ Internal error details never exposed; all errors logged via Winston.
+
+---
+
+### 7. Secrets Excluded from Logs ✅
 
 The `logConfig()` function in `env.ts` explicitly strips sensitive fields before logging startup configuration, preventing accidental secret exposure in log files.
 
@@ -629,6 +669,8 @@ This prevents invalid UUIDs, out-of-range numbers, and malformed dates from reac
 | HTML escaping in emails | ✅ Implemented | esc() applied to all user-controlled template data |
 | IDOR fix (userId bypass) | ✅ Implemented | Session required before ?userId= is honoured |
 | Admin RBAC | ✅ Implemented | requireAdmin middleware on all admin routes |
+| Centralised auth middleware | ✅ Implemented | requireAuth on all non-admin protected routes |
+| Centralised error middleware | ✅ Implemented | AppError class + errorMiddleware — no stack traces exposed |
 | Resource ownership checks | ✅ Implemented | user_id verified on all mutations |
 | Microsoft EXT UPN decode | ✅ Implemented | resolveEmail() decodes to real Gmail address |
 | Secrets excluded from logs | ✅ Implemented | logConfig() strips sensitive fields |
@@ -644,4 +686,4 @@ This prevents invalid UUIDs, out-of-range numbers, and malformed dates from reac
 
 ---
 
-*Security Report generated: March 9, 2026 | SmartCol AI Capstone Project*
+Security Report last updated: March 12, 2026 | SmartCol AI Capstone Project

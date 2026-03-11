@@ -148,12 +148,15 @@ Both models persist results to `workload_predictions` and `burnout_scores` table
 
 #### Analytics Export — CSV & PDF
 
-- `GET /api/analytics/export?format=csv` — returns a downloadable CSV file containing:
-  - Daily Workload (last 30 days) with total, work, meeting, focus, overtime hours and status
-  - Weekly Summary (last 8 weeks) with total, work, overtime hours, events, and meeting counts
-  - Time Breakdown by Task Type with total hours and event count
-- `GET /api/analytics/export?format=pdf` — returns a formatted PDF report (via `pdfkit`) with the same three sections in a tabular layout with section headers and dividers
-- **CSV** and **PDF** download buttons added to the Analytics page next to the Daily Workload refresh button; both respect the currently selected user (personal or admin view)
+- `GET /api/analytics/export?format=csv|pdf` — context-aware report download:
+  - **Admin, no user selected** → own individual data + Team Workload Overview (top 5 most overloaded)
+  - **Admin, specific user selected** → that user's individual data only (no team section)
+  - **Engineer** → own individual data only
+- Both formats include: Daily Workload (last 30 days), Weekly Summary (last 8 weeks), Time Breakdown by Task Type — rows tagged with **User** and **View** columns for clear attribution
+- **Team Workload Overview** (admin team report): top 5 most overloaded engineers (real + test users) ranked by avg daily load, with off-day balance, active risks, burnout score, and auto-generated **Manager Recommendations** (burnout, overtime, meeting overload, focus time, deadlines, off-day approval)
+- Export buttons at **top-right of Analytics page** with context-aware labels: `CSV — Team Report`, `PDF — John's Report`, `CSV — My Report`
+- Filenames include context + local timestamp: `smartcol-Team-Report-2026-03-12_01-05-22.pdf`
+- All date columns use `YYYY-MM-DD` format — timezone/time suffixes stripped via `fmtDate()` helper
 - New dependency: `pdfkit@^0.17.2` + `@types/pdfkit@^0.17.5`
 
 ---
