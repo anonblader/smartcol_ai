@@ -25,3 +25,6 @@ logs/
 # Editor
 .vscode/
 .idea/
+
+# Claude Code instructions — local only, not for version control
+CLAUDE.md
