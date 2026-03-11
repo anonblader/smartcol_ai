@@ -23,7 +23,7 @@
 ## Project Status
 
 | Phase | Description | Status |
-|---|---|---|
+| --- | --- | --- |
 | 1 | Foundation — Auth, DB, Calendar Sync | ✅ Complete |
 | 2 | AI Event Classification (Hybrid ML) | ✅ Complete |
 | 3 | Workload Analytics & Dashboard | ✅ Complete |
@@ -41,6 +41,7 @@
 ## What Has Been Built
 
 ### Phase 1 — Foundation
+
 - **Microsoft OAuth 2.0** authentication with CSRF-protected state parameter and session management
 - **PostgreSQL schema** — 17 tables covering users, OAuth tokens, calendar events, classifications, analytics, risks, off-day recommendations, ML predictions, notifications, sync history, and audit logs
 - **Calendar sync** — real Microsoft Graph API (delta queries) + 3 mock workload profiles for demo:
@@ -50,6 +51,7 @@
 - **Token storage** — encrypted refresh tokens in PostgreSQL; access tokens in express-session
 
 ### Phase 2 — AI Event Classification
+
 - **Python FastAPI** classification microservice (port 8000)
 - **Hybrid classifier** (rule-based first strategy):
   1. Rule-based engine — keyword scoring + structural heuristics
@@ -63,16 +65,18 @@
 - 17/17 classifier tests passing
 
 ### Phase 3 — Workload Analytics
+
 - Daily and weekly workload computation from classified events, stored in `daily_workload` and `weekly_workload` tables
 - **Metrics computed per day**: total minutes, work minutes, meeting minutes, focus minutes, break minutes, overtime minutes, meeting count, deadline count
 - **Dashboard endpoint** returns: current week summary, last 7 days daily breakdown, time breakdown by task type, upcoming events (next 7 days)
 - Workload heatmap (configurable days, default 30), time breakdown bar chart
 
 ### Phase 4 — Risk Detection & Off-Day Recommendations
-**6 rule-based risk detection algorithms:**
+
+#### 6 rule-based risk detection algorithms
 
 | Risk | Threshold | Severity |
-|---|---|---|
+| --- | --- | --- |
 | High Daily Workload | > 600 min/day | High / Critical |
 | Burnout Risk | > 3,000 min/week × 3 consecutive weeks | Critical |
 | Overlapping Deadlines | 2+ deadlines within 3-day window | Medium / High |
@@ -82,22 +86,26 @@
 
 **Alert lifecycle**: Active → Acknowledged (ongoing) → Auto-resolved when condition clears / Dismissed
 
-**Off-Day Recommendation Engine:**
+#### Off-Day Recommendation Engine
+
 - Entitlement rules: +1 off-day per weekday ≥ 720 min worked; +1 per any weekend work
 - Recommendations scored 0–100 (lighter workload, fewer deadlines/meetings = higher score)
 - Recommendations capped to available entitlement balance
 - Accept / Decline flow with balance tracking
 
 ### Phase 4.5 — ML Workload Prediction & Burnout Scoring
+
 Two additional supervised ML models, trained in-process at service startup (no external dataset required):
 
-**Workload Prediction (`rf-workload-v1.0` — RandomForestRegressor):**
+#### Workload Prediction (`rf-workload-v1.0` — RandomForestRegressor)
+
 - 100 estimators, max depth 8; trained on 2,500 synthetic samples (5 load profiles)
 - **Features (10)**: day of week, week of year, previous week workload, 2-week average, overall average, meeting ratio, focus ratio, avg deadline count, overtime trend
 - **Output per day**: predicted minutes, predicted hours, load level (light / moderate / high / critical), confidence (0.30–0.92), trend direction
 - Predicts next 5 working days; skips weekends automatically
 
-**Burnout Scoring (`gbm-burnout-v1.0` — GradientBoostingClassifier):**
+#### Burnout Scoring (`gbm-burnout-v1.0` — GradientBoostingClassifier)
+
 - 150 estimators, max depth 4, learning rate 0.10; trained on 3,000 synthetic samples (5 burnout profiles)
 - **Features (10)**: avg weekly hours, overtime hours/week, overtime ratio, meeting ratio, focus ratio, consecutive high-load weeks, workload trend slope, weeks above 50h, avg daily meetings, workload variability
 - **Output**: continuous score 0–100 (weighted class probabilities × midpoints), level, trend, contributing factors, full class probability distribution
@@ -106,10 +114,11 @@ Two additional supervised ML models, trained in-process at service startup (no e
 Both models persist results to `workload_predictions` and `burnout_scores` tables, refreshed on every sync.
 
 ### Phase 5 — Frontend Integration & Bug Fixes
+
 **React + MUI frontend (port 3000), role-based views:**
 
 | View | Engineer | Admin |
-|---|---|---|
+| --- | --- | --- |
 | Dashboard | Personal stats, burnout score, 5-day forecast, active risks | Team summary stats + **tabbed member view** (one tab per engineer) |
 | Analytics | Own daily/weekly/heatmap/forecast/burnout/off-day | Dropdown to view any member's analytics |
 | Risks | Own active/ongoing/history tabs | All team risks; acknowledge + email engineer |
@@ -120,12 +129,97 @@ Both models persist results to `workload_predictions` and `burnout_scores` table
 **Bug fixes shipped in Phase 5:**
 
 | Bug | Fix |
-|---|---|
+| --- | --- |
 | Classification timeout storm (99 concurrent requests) | Batched to 8 at a time; timeout raised to 30 s |
 | `meeting_minutes` missing from `weekly_workload` | ML service now aggregates from `daily_workload` |
 | Low Focus Time false positive with no data | Added `work_minutes = 0` guard before triggering |
 | ML-first classifier strategy caused slow bulk classification | Flipped to rule-based first; NLI only for ambiguous events |
 | Heavy mock had 99 events (too many for real-time classification) | Redesigned to 3 longer events/day = 54 total, same 750 min/day |
+
+### Phase 8 — Swagger UI, Weekly Digest & Active Learning
+
+#### Swagger UI (`GET /api/docs`)
+
+- Full OpenAPI 3.0 interactive API documentation served via `swagger-ui-express`
+- 45 endpoints documented across 10 tags with descriptions, parameters, and example responses
+- Raw JSON spec available at `GET /api/docs.json` for tooling integration
+- Custom SmartCol AI branding in the Swagger UI header
+
+#### Weekly Digest Email (Monday 08:00)
+
+- Third background job added to scheduler: `0 8 * * 1`
+- Each Monday, sends each engineer a workload summary for the previous week
+- Email includes: 4-column metrics grid (work / overtime / meetings / focus), active risk list, ML burnout score indicator, off-day balance
+- Fully respects the `weekly_digest` admin toggle in notification settings
+- Console-log output in demo mode (no SMTP needed to see it working)
+
+#### Active Learning — Classification Feedback Loop
+
+- Engineers can correct any AI-misclassified event from the new **Events** page (sidebar)
+- Correction applied immediately; all events with the same subject title auto-corrected
+- Stored in `classification_feedback` table (migration 004)
+- Future pipeline runs use stored corrections **before** calling the AI — known subjects are resolved via pattern matching (`pattern-learning-v1.0`) without any API call
+- **Events page features:** classified event table with method badges (`rule_based` / `ml_model` / `✓ You` / `🔁 Learned`), confidence %, inline correction dropdown, corrected-event checkmark
+- **Feedback Stats card:** total corrections, unique patterns learned, events auto-corrected, recent corrections breakdown
+
+---
+
+### Phase 7 — Email Alert Notification Management *(partial)*
+
+Admin-configurable email notification system with 6 alert types, stored in the `email_alert_settings` table. All alerts fall back to structured console-log output when SMTP is not configured, making the feature fully demonstrable without credentials.
+
+#### 6 alert types (admin toggles each on/off individually)
+
+| Alert | Default | Trigger |
+| --- | --- | --- |
+| New Risk Alert | ON | When any new risk is detected in an engineer's workload |
+| Risk Acknowledged | ON | When admin acknowledges an engineer's risk alert |
+| Risk Dismissed | OFF | When admin dismisses an engineer's risk alert |
+| Burnout Score Warning | ON | When ML burnout score exceeds 75/100 |
+| High Workload Day | OFF | When a single day exceeds 10 hours (600 min) |
+| Weekly Digest | Coming soon | Planned future weekly summary |
+
+#### Trigger hooks added to pipeline
+
+- `risks.service.ts` — fires `risk_detected` on every newly created alert
+- `ml-prediction.service.ts` — fires `burnout_warning` when score > 75
+- `analytics.service.ts` — fires `high_workload_day` when daily work > 600 min
+- `admin.controller.ts` — fires `risk_acknowledged` and `risk_dismissed` on admin actions
+
+#### Admin Settings UI (Settings page)
+
+- Grouped toggle switches per alert type with colour-coded categories
+- Last triggered timestamp + total trigger count per alert
+- **Send Test Email** button (sends to the logged-in admin's account)
+- Demo mode info banner (console output until SMTP is configured)
+
+**New DB table:** `email_alert_settings` (migration 003) with seeded defaults.
+
+**SMTP is now configured and active.** All 6 alert types (including weekly digest) deliver real HTML emails via Gmail SMTP. A `resolveEmail()` helper decodes Microsoft EXT UPN addresses (e.g. `user_gmail.com#EXT#@tenant`) back to real Gmail addresses before sending.
+
+---
+
+### Phase 6 — Background Job Scheduling
+
+**Two scheduled jobs (node-cron), started on server startup:**
+
+| Job | Schedule | What it does |
+| --- | --- | --- |
+| **Analytics Pipeline** | `*/30 * * * *` (every 30 min) | classify → compute workload → detect risks → ML predictions, for all users with events |
+| **Calendar Sync** | `0 */2 * * *` (every 2 hours) | Microsoft Graph sync for users with valid org OAuth tokens, then full pipeline |
+
+#### Scheduler features
+
+- Per-user error isolation (one failure doesn't block others)
+- In-memory job status tracking (last run, duration, users processed, next run estimate)
+- Graceful shutdown: `stopScheduler()` called on SIGTERM/SIGINT
+
+#### Admin UI (Settings page)
+
+- Live status card per job, auto-refreshes every 15 s
+- **Run Now** button, **Pause / Resume** toggle per job
+
+---
 
 ### Phase 9 — Robustness & UX Enhancements
 
@@ -161,83 +255,6 @@ Both models persist results to `workload_predictions` and `burnout_scores` table
 
 ---
 
-### Phase 8 — Swagger UI, Weekly Digest & Active Learning
-
-**Swagger UI (`GET /api/docs`)**
-- Full OpenAPI 3.0 interactive API documentation served via `swagger-ui-express`
-- 45 endpoints documented across 10 tags with descriptions, parameters, and example responses
-- Raw JSON spec available at `GET /api/docs.json` for tooling integration
-- Custom SmartCol AI branding in the Swagger UI header
-
-**Weekly Digest Email (Monday 08:00)**
-- Third background job added to scheduler: `0 8 * * 1`
-- Each Monday, sends each engineer a workload summary for the previous week
-- Email includes: 4-column metrics grid (work / overtime / meetings / focus), active risk list, ML burnout score indicator, off-day balance
-- Fully respects the `weekly_digest` admin toggle in notification settings
-- Console-log output in demo mode (no SMTP needed to see it working)
-
-**Active Learning — Classification Feedback Loop**
-- Engineers can correct any AI-misclassified event from the new **Events** page (sidebar)
-- Correction applied immediately; all events with the same subject title auto-corrected
-- Stored in `classification_feedback` table (migration 004)
-- Future pipeline runs use stored corrections **before** calling the AI — known subjects are resolved via pattern matching (`pattern-learning-v1.0`) without any API call
-- **Events page features:** classified event table with method badges (`rule_based` / `ml_model` / `✓ You` / `🔁 Learned`), confidence %, inline correction dropdown, corrected-event checkmark
-- **Feedback Stats card:** total corrections, unique patterns learned, events auto-corrected, recent corrections breakdown
-
----
-
-### Phase 7 — Email Alert Notification Management *(partial)*
-
-Admin-configurable email notification system with 6 alert types, stored in the `email_alert_settings` table. All alerts fall back to structured console-log output when SMTP is not configured, making the feature fully demonstrable without credentials.
-
-**6 alert types (admin toggles each on/off individually):**
-
-| Alert | Default | Trigger |
-|---|---|---|
-| New Risk Alert | ON | When any new risk is detected in an engineer's workload |
-| Risk Acknowledged | ON | When admin acknowledges an engineer's risk alert |
-| Risk Dismissed | OFF | When admin dismisses an engineer's risk alert |
-| Burnout Score Warning | ON | When ML burnout score exceeds 75/100 |
-| High Workload Day | OFF | When a single day exceeds 10 hours (600 min) |
-| Weekly Digest | Coming soon | Planned future weekly summary |
-
-**Trigger hooks added to pipeline:**
-- `risks.service.ts` — fires `risk_detected` on every newly created alert
-- `ml-prediction.service.ts` — fires `burnout_warning` when score > 75
-- `analytics.service.ts` — fires `high_workload_day` when daily work > 600 min
-- `admin.controller.ts` — fires `risk_acknowledged` and `risk_dismissed` on admin actions
-
-**Admin Settings UI (Settings page):**
-- Grouped toggle switches per alert type with colour-coded categories
-- Last triggered timestamp + total trigger count per alert
-- **Send Test Email** button (sends to the logged-in admin's account)
-- Demo mode info banner (console output until SMTP is configured)
-
-**New DB table:** `email_alert_settings` (migration 003) with seeded defaults.
-
-**SMTP is now configured and active.** All 6 alert types (including weekly digest) deliver real HTML emails via Gmail SMTP. A `resolveEmail()` helper decodes Microsoft EXT UPN addresses (e.g. `user_gmail.com#EXT#@tenant`) back to real Gmail addresses before sending.
-
----
-
-### Phase 6 — Background Job Scheduling
-**Two scheduled jobs (node-cron), started on server startup:**
-
-| Job | Schedule | What it does |
-|---|---|---|
-| **Analytics Pipeline** | `*/30 * * * *` (every 30 min) | classify → compute workload → detect risks → ML predictions, for all users with events |
-| **Calendar Sync** | `0 */2 * * *` (every 2 hours) | Microsoft Graph sync for users with valid org OAuth tokens, then full pipeline |
-
-**Scheduler features:**
-- Per-user error isolation (one failure doesn't block others)
-- In-memory job status tracking (last run, duration, users processed, next run estimate)
-- Graceful shutdown: `stopScheduler()` called on SIGTERM/SIGINT
-
-**Admin UI (Settings page):**
-- Live status card per job, auto-refreshes every 15 s
-- **Run Now** button, **Pause / Resume** toggle per job
-
----
-
 ## Changes from Original Plan
 
 The following documents significant deviations from the original design specification to the actual implementation, along with the reasons for each change.
@@ -247,9 +264,11 @@ The following documents significant deviations from the original design specific
 ### 1. Classifier Strategy — ML-First → Rule-Based First
 
 **Original plan:**
+
 > "Hybrid Model: 60% ML + 40% Rules weighted voting"
 
 **Actual implementation:**
+
 Rule-based engine runs first. If confidence ≥ 0.72, result is returned instantly without invoking the NLI model. Only ambiguous events (< 0.72) proceed to `facebook/bart-large-mnli`.
 
 **Why:** The NLI model runs on CPU in this demo environment, taking 1–2 seconds per inference. Sending all events through it caused timeout storms on larger syncs (99 events = all timed out). The rule-based engine handles ~70% of events instantly with high confidence; ML is reserved for genuinely ambiguous cases.
@@ -261,16 +280,20 @@ Rule-based engine runs first. If confidence ≥ 0.72, result is returned instant
 ### 2. Background Jobs — Bull (Redis Queue) → node-cron
 
 **Original plan:**
+
 > "Bull Queue Jobs: Calendar Sync every 15 min, Classification on event create/update, Daily Overtime Calculation 1 AM, Risk Detection 6 AM, Off-Day Recommendations weekly, Weekly Summary Email Monday 8 AM"
 
 **Actual implementation:**
+
 Two jobs managed by `node-cron` (in-process):
+
 - Analytics Pipeline every 30 minutes
 - Calendar Sync every 2 hours
 
 **Why:** Bull requires Redis as a persistent job queue backend. While Redis is configured in the environment, setting it up as a production job queue added infrastructure complexity not warranted for a capstone demo. `node-cron` runs in-process, requires no additional infrastructure, and is sufficient for the demo's scheduling needs.
 
 **What was simplified:**
+
 - Classification is not a separate job — it runs as part of the unified pipeline
 - Overtime calculation is embedded in the Analytics Pipeline (no dedicated job)
 - Risk detection runs as part of the pipeline (no dedicated 6 AM job)
@@ -284,6 +307,7 @@ Two jobs managed by `node-cron` (in-process):
 **Original plan:** The AI service was scoped to event classification only.
 
 **Actual additions:**
+
 1. **Workload Prediction** (`RandomForestRegressor`) — 5-day forecast of daily work minutes
 2. **Burnout Risk Scoring** (`GradientBoostingClassifier`) — continuous 0–100 score replacing purely threshold-based burnout detection
 
@@ -296,9 +320,11 @@ Both models are trained on synthetic data at service startup — no external dat
 ### 4. Token Storage — Redis (Short-Lived) → PostgreSQL Only
 
 **Original plan:**
+
 > "Access tokens: Redis (short-lived, 1 hour). Refresh tokens: PostgreSQL (encrypted with AES-256-GCM)"
 
 **Actual implementation:**
+
 Both access tokens and refresh tokens are stored in PostgreSQL (`oauth_tokens` table). The server uses `express-session` for session state. Redis is configured in the environment but is not actively used for token storage.
 
 **Why:** Adding Redis as a runtime dependency (beyond what PostgreSQL already provides) increased setup complexity without meaningful benefit in a single-server demo environment. The session store and token lookup are fast enough with PostgreSQL for the demo scale.
@@ -310,9 +336,11 @@ Both access tokens and refresh tokens are stored in PostgreSQL (`oauth_tokens` t
 ### 5. Token Encryption — AES-256-GCM → Base64 Placeholder
 
 **Original plan:**
+
 > "Token encryption: AES-256-GCM with per-token IV. Key management: Azure Key Vault with RBAC"
 
 **Actual implementation:**
+
 Tokens are stored with Base64 encoding as a placeholder. The `TOKEN_ENCRYPTION_KEY` in `.env` is documented as a placeholder for development only.
 
 **Why:** Azure Key Vault integration requires an active Azure subscription and additional SDK configuration. For a local demo environment, the Base64 placeholder allows the full auth flow to work end-to-end. Production deployment would replace this with AES-256-GCM + Azure Key Vault.
@@ -322,10 +350,13 @@ Tokens are stored with Base64 encoding as a placeholder. The `TOKEN_ENCRYPTION_K
 ### 6. Off-Day Recommendations — Pure Scoring → Entitlement-Based
 
 **Original plan:**
+
 > "Generates top 10 recommended days, priority score 0–100"
 
 **Actual implementation:**
+
 An entitlement system was added on top of the scoring:
+
 - Users **earn** off-days: +1 per weekday ≥ 720 min worked, +1 per any weekend work
 - Recommendations are **capped** to the available entitlement balance
 - Users can **accept or decline** recommendations; accepted ones are deducted from balance
@@ -339,6 +370,7 @@ An entitlement system was added on top of the scoring:
 **Original plan:** No distinction between admin and regular users was specified.
 
 **Actual additions:**
+
 - **Role-based access control** — admin vs engineer views throughout the frontend
 - **Admin dashboard** — team overview with per-member workload detail (tabbed view)
 - **Admin analytics** — view any team member's analytics via user selector
@@ -354,10 +386,11 @@ An entitlement system was added on top of the scoring:
 **Original plan:** Only real Microsoft Graph sync was specified.
 
 **Actual additions:**
+
 Three deterministic mock sync profiles were built to support testing without an org Microsoft 365 tenant:
 
 | Profile | Events | Daily Load | Risks Triggered |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Balanced | ~8 events | ~8h/day | None |
 | Overloaded | 54 events × 3 weeks | 12.5h/day | All 6 |
 | Underloaded | 3 events/week | ~1.5h/day | Low Focus Time |
@@ -371,6 +404,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 **Original plan:** 15 tables specified in initial schema.
 
 **Additions in migration 002:**
+
 - `workload_predictions` — stores 5-day workload forecasts per user (from RandomForest model)
 - `burnout_scores` — stores daily burnout scores per user (from GradientBoosting model), with UPSERT on `(user_id, score_date)`
 
@@ -379,7 +413,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 ### 10. Features Not Yet Implemented from Original Plan
 
 | Feature | Original Plan | Status | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | WebSocket / Socket.io real-time updates | Planned | ❌ Not built | Infrastructure complexity; polling/refresh used instead |
 | Push notifications (FCM/mobile) | Planned | ❌ Not built | Requires mobile app or PWA with service worker |
 | Active learning (user feedback loop) | Planned | ✅ Built | Events page — inline correction, pattern learning, auto-apply to matching subjects |
@@ -396,7 +430,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 
 ### Actual Architecture (Current)
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        CLIENT LAYER                              │
 │   React 18 + TypeScript + MUI v5 + Redux Toolkit + Recharts     │
@@ -447,6 +481,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 ### Original Planned Architecture (for reference)
 
 The original plan specified:
+
 - **Bull (Redis-based)** job queue → replaced with `node-cron` (in-process)
 - **Redis** for token caching + session → PostgreSQL only (Redis not actively used)
 - **Socket.io** for real-time WebSocket → not implemented (polling/refresh used)
@@ -460,7 +495,7 @@ The original plan specified:
 ### Actual Stack
 
 | Layer | Technology | Notes vs Original Plan |
-|---|---|---|
+| --- | --- | --- |
 | **Backend runtime** | Node.js 20+, Express 4, TypeScript | As planned |
 | **Database** | PostgreSQL 15 (Docker) | As planned; Redis not actively used |
 | **Session** | express-session | Redis session store not implemented |
@@ -479,10 +514,10 @@ The original plan specified:
 
 ### Tables (17 total)
 
-**Migration 001 — Core Schema**
+#### Migration 001 — Core Schema
 
 | Table | Purpose |
-|---|---|
+| --- | --- |
 | `users` | User accounts, work schedule settings |
 | `oauth_tokens` | Encrypted Microsoft Graph refresh tokens |
 | `calendar_events` | Synced events from Microsoft Graph or mock |
@@ -499,23 +534,23 @@ The original plan specified:
 | `notification_preferences` | Per-user notification settings |
 | `audit_logs` | Security / compliance audit trail |
 
-**Migration 002 — ML Predictions** *(added in Phase 4.5)*
+#### Migration 002 — ML Predictions *(added in Phase 4.5)*
 
 | Table | Purpose |
-|---|---|
+| --- | --- |
 | `workload_predictions` | 5-day workload forecast per user (refreshed each sync) |
 | `burnout_scores` | Daily burnout score per user, UPSERT on (user_id, score_date) |
 
-**Migration 003 — Email Alert Settings** *(added in Phase 7)*
+#### Migration 003 — Email Alert Settings *(added in Phase 7)*
 
 | Table | Purpose |
-|---|---|
+| --- | --- |
 | `email_alert_settings` | Admin-configurable on/off switches for each email alert type, with last triggered timestamp and trigger count |
 
-**Migration 004 — Classification Feedback** *(added in Phase 8)*
+#### Migration 004 — Classification Feedback *(added in Phase 8)*
 
 | Table | Purpose |
-|---|---|
+| --- | --- |
 | `classification_feedback` | User classification corrections — stores original type, corrected type, event subject for pattern learning. UNIQUE on event_id. |
 
 ---
@@ -523,7 +558,8 @@ The original plan specified:
 ## API Reference
 
 ### Auth
-```
+
+```text
 GET  /api/auth/connect                 Get Microsoft OAuth URL
 GET  /api/auth/callback                OAuth callback (redirects to frontend)
 POST /api/auth/disconnect              Revoke session and tokens
@@ -531,7 +567,8 @@ GET  /api/auth/status                  Check authentication state
 ```
 
 ### Calendar Sync
-```
+
+```text
 POST   /api/sync/mock                  Balanced mock sync + full pipeline
 POST   /api/sync/heavy-mock            Overloaded mock sync + full pipeline
 POST   /api/sync/light-mock            Underloaded mock sync + full pipeline
@@ -543,7 +580,8 @@ DELETE /api/sync/clear-data            Wipe all user data (used before re-sync)
 ```
 
 ### Analytics
-```
+
+```text
 GET  /api/analytics/dashboard          All key metrics in one call
 GET  /api/analytics/daily              Daily workload rows (date range filter)
 GET  /api/analytics/weekly             Weekly summaries (N most recent weeks)
@@ -555,7 +593,8 @@ GET  /api/analytics/export             Download CSV or PDF report (?format=csv|p
 ```
 
 ### Risks
-```
+
+```text
 GET  /api/risks/active                 Active risk alerts
 GET  /api/risks/ongoing                Acknowledged (ongoing) alerts
 GET  /api/risks/history                All past alerts
@@ -565,7 +604,8 @@ POST /api/risks/:id/dismiss            Force-dismiss alert
 ```
 
 ### Off-Day Recommendations
-```
+
+```text
 POST /api/offday/generate              Generate recommendations for user
 GET  /api/offday/balance               Current entitlement balance
 GET  /api/offday/pending               Unresponded recommendations
@@ -576,14 +616,16 @@ POST /api/offday/:id/reject            Decline recommendation
 ```
 
 ### ML Predictions
-```
+
+```text
 POST /api/ml/predict                   Run both ML models and store results
 GET  /api/ml/workload-forecast         5-day workload forecast (auto-generates if missing)
 GET  /api/ml/burnout-score             Latest burnout score (auto-generates if missing)
 ```
 
 ### Admin *(requires admin session)*
-```
+
+```text
 GET  /api/admin/team-overview          All members with summary workload stats
 GET  /api/admin/team-risks             All team risk alerts (filterable by status)
 POST /api/admin/risks/:id/acknowledge  Acknowledge alert + email engineer
@@ -591,34 +633,39 @@ POST /api/admin/risks/:id/dismiss      Dismiss alert + email engineer
 ```
 
 ### Email Notifications *(requires admin session)*
-```
+
+```text
 GET  /api/notifications/settings       All alert settings (key, name, enabled, last triggered)
 POST /api/notifications/settings       Toggle an alert on/off { alertKey, enabled }
 POST /api/notifications/test           Send test email to the session user
 ```
 
 ### Classification Feedback / Active Learning
-```
+
+```text
 GET  /api/feedback/events              Classified events list with correction state (limit param)
 GET  /api/feedback/stats               Feedback statistics (total corrections, patterns, auto-applied)
 POST /api/feedback/correct             Submit a correction { eventId, correctedTypeId }
 ```
 
 ### API Documentation
-```
+
+```text
 GET  /api/docs                         Swagger UI — interactive API reference (45 endpoints, 10 tags)
 GET  /api/docs.json                    Raw OpenAPI 3.0 spec (JSON) for tooling
 ```
 
 ### Scheduler *(requires admin session)*
-```
+
+```text
 GET  /api/scheduler/status             Current status of all background jobs
 POST /api/scheduler/trigger            Manually trigger a job { jobKey }
 POST /api/scheduler/toggle             Pause or resume a job { jobKey, enabled }
 ```
 
 ### AI/ML Service *(internal — classification-service port 8000)*
-```
+
+```text
 GET  /health                           Service health + NLI model status
 POST /classify                         Classify a single event (hybrid rule-based + NLI)
 POST /predict/workload                 5-day workload forecast (RandomForest)
@@ -630,6 +677,7 @@ POST /score/burnout                    Burnout risk score 0-100 (GradientBoostin
 ## Quick Start
 
 ### Prerequisites
+
 - Node.js 20+
 - Python 3.11+
 - PostgreSQL 15 running on localhost:5432
@@ -669,9 +717,10 @@ npm install && npm start
 ```
 
 Services:
-- **Frontend**: http://localhost:3000
-- **Backend**: http://localhost:3001
-- **AI Service**: http://localhost:8000
+
+- **Frontend**: <http://localhost:3000>
+- **Backend**: <http://localhost:3001>
+- **AI Service**: <http://localhost:8000>
 
 See **STARTUP_GUIDE.md** for full environment variable reference and step-by-step instructions.
 
@@ -680,7 +729,7 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 ## Known Limitations
 
 | Limitation | Detail | Workaround / Plan |
-|---|---|---|
+| --- | --- | --- |
 | Microsoft Graph 401 on personal accounts | Personal Microsoft accounts cannot access calendar via Graph API | Use the 3 mock sync profiles (Balanced / Overloaded / Underloaded) |
 | Calendar Sync background job | Only works with an org Microsoft 365 tenant + admin-consented `Calendars.Read` permission | Analytics Pipeline job keeps data fresh every 30 min on existing mock data |
 | Token encryption | Base64 placeholder — not production-grade | Replace with AES-256-GCM + Azure Key Vault before production |
@@ -697,13 +746,13 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 
 ---
 
-### ✅ Email SMTP — Complete
+### Email SMTP — Complete
 
 Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 6 alert types deliver real HTML emails to engineers. A Microsoft EXT UPN decoder ensures emails reach the correct Gmail address for personal Microsoft account users.
 
 ---
 
-### Phase 9 — CI/CD & Production Deployment
+### Phase 10 — CI/CD & Production Deployment
 
 **What's left (future):**
 
@@ -720,7 +769,7 @@ Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 
 ### Additional Future Enhancements
 
 | Enhancement | Description |
-|---|---|
+| --- | --- |
 | Automated test suite | Jest unit tests for backend business logic (risk thresholds, scoring) + Cypress E2E tests; to be wired into GitHub Actions CI on every push to `main` |
 | Real calendar sync | Requires org Microsoft 365 tenant with admin-consented `Calendars.Read` |
 | Push / WebSocket notifications | Real-time in-app alerts without page refresh |
@@ -733,7 +782,7 @@ Gmail SMTP is configured and live (`smtp.gmail.com:587` with App Password). All 
 ## Documentation
 
 | File | Description |
-|---|---|
+| --- | --- |
 | `README.md` | This file — project overview, architecture, API reference, change log |
 | `IMPLEMENTATION_REPORT.md` | Detailed phase-by-phase implementation notes (Phases 1–9) |
 | `SECURITY_REPORT.md` | Full security audit — strengths, 5 vulnerabilities fixed, accepted risks, future recommendations |
