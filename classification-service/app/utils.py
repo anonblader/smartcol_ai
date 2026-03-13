@@ -11,7 +11,7 @@ def count_keyword_hits(text: str, keywords: list[str]) -> int:
     return sum(1 for kw in keywords if kw in text)
 
 
-def attendee_count(attendees) -> int:
+def attendee_count(attendees: Optional[list]) -> int:
     """Return number of attendees, excluding None."""
     if not attendees:
         return 0

@@ -13,7 +13,7 @@
 This report documents the complete implementation of the SmartCol AI backend infrastructure, including database design, TypeScript configuration, core services, and a fully functional Microsoft OAuth 2.0 authentication system with database integration.
 
 ### Key Achievements
-- ✅ Designed and implemented comprehensive PostgreSQL database schema (18 tables)
+- ✅ Designed and implemented comprehensive PostgreSQL database schema (19 tables)
 - ✅ Configured strict TypeScript development environment
 - ✅ Built core backend services (Database, Microsoft Graph API)
 - ✅ Implemented complete OAuth 2.0 authentication flow
@@ -51,7 +51,7 @@ This report documents the complete implementation of the SmartCol AI backend inf
 Designed a comprehensive PostgreSQL schema to support the SmartCol AI workload management system.
 
 **Database Server:** PostgreSQL 15.17 (Docker container)
-**Total Tables:** 18
+**Total Tables:** 19
 **Total Indexes:** 25+
 **Views:** 2 materialized views
 
@@ -3343,7 +3343,7 @@ Implemented `AppError` class and `errorMiddleware` in `backend/src/middleware/er
 
 ### 9.2 Centralised Auth Middleware
 
-Implemented `requireAuth` in `backend/src/middleware/auth.middleware.ts`. Applied to all protected route groups in `app.ts`: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`, `/api/calendar`. Returns `401 Unauthorized` if `req.session.user_id` is absent. Admin routes continue using `requireAdmin` which already includes the session check.
+Implemented `requireAuth` in `backend/src/middleware/auth.middleware.ts`. Applied to all protected route groups in `app.ts`: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`. Returns `401 Unauthorized` if `req.session.user_id` is absent. Admin routes continue using `requireAdmin` which already includes the session check.
 
 ### 9.3 Events Page — Search & Filter
 

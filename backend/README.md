@@ -1,5 +1,7 @@
 # SmartCol AI Backend
 
+> **Note:** This file reflects the **original design specification** and may not match the current implementation. For up-to-date documentation, refer to the root [`README.md`](../README.md) and [`IMPLEMENTATION_REPORT.md`](../IMPLEMENTATION_REPORT.md).
+
 Node.js + Express + TypeScript backend API for SmartCol AI workload management system.
 
 ## Tech Stack

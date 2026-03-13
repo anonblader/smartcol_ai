@@ -12,14 +12,8 @@
 import { Request, Response } from 'express';
 import PDFDocument from 'pdfkit';
 import { db } from '../services/database.client';
-import { config } from '../config/env';
 import { logger } from '../config/monitoring.config';
-
-function resolveUserId(req: Request): string | null {
-  const sessionUserId = req.session.user_id;
-  if (!sessionUserId) return null;
-  return (req.query.userId as string) || sessionUserId;
-}
+import { resolveUserId, isAdminRequest } from '../utils/auth.utils';
 
 function toHrs(minutes: unknown): string {
   return (Number(minutes) / 60).toFixed(1);
@@ -34,12 +28,6 @@ function fmtDate(value: unknown): string {
 }
 
 /** Returns true if the session user is an admin. */
-async function isAdmin(req: Request): Promise<boolean> {
-  const userId = req.session.user_id;
-  if (!userId) return false;
-  const user = await db.queryOne<{ email: string }>('SELECT email FROM users WHERE id = $1', [userId]);
-  return !!user && config.admin.emails.includes(user.email.toLowerCase());
-}
 
 // ── Manager recommendation engine ─────────────────────────────────────────────
 
@@ -210,7 +198,7 @@ export async function exportAnalytics(req: Request, res: Response): Promise<void
     const format   = ((req.query.format as string) || 'csv').toLowerCase();
     const now      = new Date();
     const today    = now.toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
-    const adminView = await isAdmin(req);
+    const adminView = await isAdminRequest(req);
 
     // ── Resolve viewed user's display name ───────────────────────────────────
     const userInfo = await db.queryOne<{ display_name: string }>(

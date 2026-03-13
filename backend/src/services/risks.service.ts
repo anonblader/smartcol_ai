@@ -17,16 +17,17 @@ export interface RiskDetectionResult {
   error?: string;
 }
 
-// ── thresholds ────────────────────────────────────────────────────────────────
-const HIGH_DAILY_MINUTES      = 600;   // 10 h/day
-const BURNOUT_WEEKLY_MINUTES  = 3000;  // 50 h/week for 3+ consecutive weeks
-const BURNOUT_WEEKS_REQUIRED  = 3;
-const OVERLAP_WINDOW_DAYS     = 3;     // deadlines within N days
-const OVERLAP_MIN_COUNT       = 2;
-const EXCESSIVE_TROUBLESHOOT  = 480;   // 8 h/week ad-hoc
-const LOW_FOCUS_MINUTES       = 300;   // < 5 h/week
-const MEETING_OVERLOAD_MINS   = 1200;  // > 20 h/week
-const MEETING_OVERLOAD_COUNT  = 25;    // or 25+ meetings
+// ── Thresholds — tuned to flag meaningful risks without excessive noise ───────
+// Source: industry best-practices for knowledge workers + internal testing
+const HIGH_DAILY_MINUTES      = 600;   // 10 h/day — ~25% above an 8h standard day
+const BURNOUT_WEEKLY_MINUTES  = 3000;  // 50 h/week sustained over 3+ consecutive weeks
+const BURNOUT_WEEKS_REQUIRED  = 3;     // consecutive weeks above the threshold
+const OVERLAP_WINDOW_DAYS     = 3;     // cluster window for deadline proximity
+const OVERLAP_MIN_COUNT       = 2;     // 2+ deadlines in the window = overlap risk
+const EXCESSIVE_TROUBLESHOOT  = 480;   // 8 h/week reactive (ad-hoc) work
+const LOW_FOCUS_MINUTES       = 300;   // < 5 h/week of uninterrupted deep work
+const MEETING_OVERLOAD_MINS   = 1200;  // > 20 h/week in meetings
+const MEETING_OVERLOAD_COUNT  = 25;    // or 25+ meetings regardless of duration
 
 // task type IDs
 const DEADLINE_TYPE_IDS        = [1, 3]; // Deadline, Project Milestone

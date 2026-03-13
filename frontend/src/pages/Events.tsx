@@ -13,8 +13,7 @@ import AutoFixHighIcon        from '@mui/icons-material/AutoFixHigh';
 import SchoolIcon             from '@mui/icons-material/School';
 import { format, parseISO }   from 'date-fns';
 import { feedbackApi }        from '../services/api';
-
-const PRIMARY = '#2563eb';
+import { PRIMARY }            from '../utils/constants';
 
 // ── Task types (mirrors DB) ───────────────────────────────────────────────────
 

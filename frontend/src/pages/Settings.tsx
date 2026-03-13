@@ -26,8 +26,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import { useAuth } from '../hooks/useAuth';
 import { authApi, syncApi, testApi, schedulerApi, notificationsApi } from '../services/api';
-
-const PRIMARY = '#2563eb';
+import { PRIMARY } from '../utils/constants';
+import { mins2h, loadColor, loadLabel } from '../utils/helpers';
 
 type SyncType = 'balanced' | 'overloaded' | 'underloaded' | null;
 type SyncPhase = 'clearing' | 'syncing' | null;
@@ -64,27 +64,6 @@ const SYNC_OPTIONS = [
     expectedRisks: 'Expected: Low Focus Time',
   },
 ];
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function mins2h(m: number) { return (Number(m) / 60).toFixed(1); }
-
-const LOAD_COLOR = (peakMins: number, totalWorkMins: number) => {
-  const peak = Number(peakMins) / 60;
-  const total = Number(totalWorkMins) / 60;
-  if (peak > 10) return '#ef4444';
-  if (peak > 8)  return '#f59e0b';
-  if (total < 5) return '#3b82f6';
-  return '#10b981';
-};
-const LOAD_LABEL = (peakMins: number, totalWorkMins: number) => {
-  const peak = Number(peakMins) / 60;
-  const total = Number(totalWorkMins) / 60;
-  if (peak > 10) return 'Overloaded';
-  if (peak > 8)  return 'High Load';
-  if (total < 5) return 'Underloaded';
-  return 'Balanced';
-};
 
 // ── Email Alerts Card ──────────────────────────────────────────────────────────
 
@@ -887,16 +866,16 @@ export const Settings: React.FC = () => {
               </Typography>
               <Grid container spacing={1.5}>
                 {testUsers.map((u: any) => {
-                  const loadColor = LOAD_COLOR(u.peak_daily_minutes, u.total_work_minutes);
-                  const loadLabel = LOAD_LABEL(u.peak_daily_minutes, u.total_work_minutes);
+                  const uColor = loadColor(u.peak_daily_minutes, u.total_work_minutes);
+                  const uLabel = loadLabel(u.peak_daily_minutes, u.total_work_minutes);
                   const initials  = u.display_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2);
                   const activeRisks = Number(u.active_risks);
 
                   return (
                     <Grid item xs={12} sm={6} key={u.id}>
-                      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5, borderLeft: `3px solid ${loadColor}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5, borderLeft: `3px solid ${uColor}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         {/* Avatar */}
-                        <Box sx={{ width: 34, height: 34, borderRadius: '50%', background: `${loadColor}20`, color: loadColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                        <Box sx={{ width: 34, height: 34, borderRadius: '50%', background: `${uColor}20`, color: uColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
                           {initials}
                         </Box>
 
@@ -904,7 +883,7 @@ export const Settings: React.FC = () => {
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                             <Typography variant="body2" fontWeight={700} noWrap>{u.display_name}</Typography>
-                            <Chip label={loadLabel} size="small" sx={{ height: 16, fontSize: 9, fontWeight: 700, background: `${loadColor}20`, color: loadColor }} />
+                            <Chip label={uLabel} size="small" sx={{ height: 16, fontSize: 9, fontWeight: 700, background: `${uColor}20`, color: uColor }} />
                             {activeRisks > 0 && (
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                                 <WarningAmberIcon sx={{ fontSize: 11, color: '#ef4444' }} />

@@ -8,7 +8,6 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.config';
 import authRoutes from './routes/auth.routes';
 import syncRoutes from './routes/sync.routes';
-import calendarRoutes from './routes/calendar.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import risksRoutes from './routes/risks.routes';
 import testRoutes from './routes/test.routes';
@@ -96,7 +95,6 @@ app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
 // API routes (these match your frontend api.ts expectations)
 app.use('/api/auth', authRoutes);
 app.use('/api/sync',      requireAuth, syncRoutes);
-app.use('/api/calendar',  requireAuth, calendarRoutes);
 app.use('/api/analytics', requireAuth, analyticsRoutes);
 app.use('/api/risks',     requireAuth, risksRoutes);
 app.use('/api/admin',     requireAdmin, adminRoutes);

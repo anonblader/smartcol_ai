@@ -182,7 +182,7 @@ export function requireAuth(req, res, next) {
 }
 ```
 
-Applied to: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`, `/api/calendar`
+Applied to: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`
 
 **Status:** ✅ Consistent 401 enforcement at the middleware layer across all protected routes.
 

@@ -22,16 +22,8 @@ import { format, parseISO }      from 'date-fns';
 import { WorkloadForecastCard }  from '../components/dashboard/WorkloadForecastCard';
 import { BurnoutScoreCard }      from '../components/dashboard/BurnoutScoreCard';
 import { analyticsApi }          from '../services/api';
-
-const PRIMARY = '#2563eb';
-const BREAKDOWN_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#06b6d4', '#ec4899'];
-const SEVERITY_COLORS: Record<string, string> = {
-  low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#7c3aed',
-};
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function mins2h(m: number) { return (Number(m) / 60).toFixed(1); }
+import { PRIMARY, BREAKDOWN_COLORS, SEVERITY_COLORS } from '../utils/constants';
+import { mins2h, loadColor, loadLabel } from '../utils/helpers';
 
 function fmtTime(s: string) {
   try { return format(parseISO(s), 'EEE MMM d, h:mm a'); } catch { return s; }
@@ -81,25 +73,6 @@ function AlertCard({ alert, onAcknowledge, onDismiss }: {
       {alert.recommendation && <Typography variant="body2" color={PRIMARY} sx={{ mt: 0.5, fontStyle: 'italic' }}>{alert.recommendation}</Typography>}
     </Paper>
   );
-}
-
-// ── Load level helpers ────────────────────────────────────────────────────────
-
-function loadColor(peakMins: number, workMins: number) {
-  const peak = Number(peakMins) / 60;
-  const work = Number(workMins) / 60;
-  if (peak > 10) return '#ef4444';
-  if (peak > 8)  return '#f59e0b';
-  if (work < 5)  return '#3b82f6';
-  return '#10b981';
-}
-function loadLabel(peakMins: number, workMins: number) {
-  const peak = Number(peakMins) / 60;
-  const work = Number(workMins) / 60;
-  if (peak > 10) return 'Overloaded';
-  if (peak > 8)  return 'High Load';
-  if (work < 5)  return 'Underloaded';
-  return 'Balanced';
 }
 
 // ── Per-member detail panel (lazy-loaded on first tab selection) ──────────────

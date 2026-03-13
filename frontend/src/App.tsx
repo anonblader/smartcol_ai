@@ -21,8 +21,9 @@ import { Risks }      from './pages/Risks';
 import { Settings }   from './pages/Settings';
 import { Events }     from './pages/Events';
 
+import { PRIMARY } from './utils/constants';
+
 const SIDEBAR_WIDTH = 240;
-const PRIMARY = '#2563eb';
 const SIDEBAR_BG = '#1e293b';
 
 const navItems = [
@@ -209,12 +210,15 @@ function Sidebar({ isAdmin }: { isAdmin: boolean }) {
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', px: 1, display: 'block', mb: 0.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Admin
             </Typography>
-            {[
-              { label: 'Auth & Users',     href: 'http://localhost:3001/test-auth.html' },
-              { label: 'Sync Testing',     href: 'http://localhost:3001/test-sync.html' },
-              { label: 'Analytics Panel',  href: 'http://localhost:3001/test-analytics.html' },
-              { label: 'Multi-User Test',  href: 'http://localhost:3001/test-multiuser.html' },
-            ].map((link) => (
+            {(() => {
+              const backend = (process.env.REACT_APP_API_URL || 'http://localhost:3001/api').replace(/\/api$/, '');
+              return [
+                { label: 'Auth & Users',     href: `${backend}/test-auth.html` },
+                { label: 'Sync Testing',     href: `${backend}/test-sync.html` },
+                { label: 'Analytics Panel',  href: `${backend}/test-analytics.html` },
+                { label: 'Multi-User Test',  href: `${backend}/test-multiuser.html` },
+              ];
+            })().map((link) => (
               <ListItemButton
                 key={link.href}
                 component="a"

@@ -8,7 +8,7 @@ A step-by-step guide to get all SmartCol AI services running after a fresh reboo
 
 | Service | Port | What it does |
 |---|---|---|
-| PostgreSQL | 5432 | Primary database (17 tables) |
+| PostgreSQL | 5432 | Primary database (19 tables) |
 | Backend (Node.js) | 3001 | REST API + background job scheduler |
 | Classification Service (Python) | 8000 | AI classifier + ML workload/burnout models |
 | Frontend (React) | 3000 | Web application |

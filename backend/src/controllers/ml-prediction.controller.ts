@@ -11,6 +11,7 @@ import {
   getLatestBurnoutScore,
 } from '../services/ml-prediction.service';
 import { logger } from '../config/monitoring.config';
+import { resolveUserId } from '../utils/auth.utils';
 
 /**
  * POST /api/ml/predict
@@ -46,13 +47,12 @@ export async function runPredictions(req: Request, res: Response): Promise<void>
  */
 export async function getWorkloadForecastHandler(req: Request, res: Response): Promise<void> {
   try {
-    const sessionUserId = req.session.user_id;
-    if (!sessionUserId) {
+    const userId = resolveUserId(req);
+    if (!userId) {
       res.status(401).json({ error: 'Unauthorized', message: 'No active session' });
       return;
     }
 
-    const userId   = (req.query.userId as string) || sessionUserId;
     let   forecast = await getWorkloadForecast(userId);
 
     // Auto-generate if no predictions stored yet (e.g. user has data but hasn't re-synced)
@@ -77,13 +77,12 @@ export async function getWorkloadForecastHandler(req: Request, res: Response): P
  */
 export async function getBurnoutScoreHandler(req: Request, res: Response): Promise<void> {
   try {
-    const sessionUserId = req.session.user_id;
-    if (!sessionUserId) {
+    const userId = resolveUserId(req);
+    if (!userId) {
       res.status(401).json({ error: 'Unauthorized', message: 'No active session' });
       return;
     }
 
-    const userId = (req.query.userId as string) || sessionUserId;
     let   score  = await getLatestBurnoutScore(userId);
 
     // Auto-generate if no score stored yet

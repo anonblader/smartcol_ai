@@ -8,18 +8,7 @@ import { Request, Response } from 'express';
 import { computeWorkload } from '../services/analytics.service';
 import { db } from '../services/database.client';
 import { logger } from '../config/monitoring.config';
-
-/**
- * Resolve which userId to use.
- * Session is REQUIRED — ?userId= query param alone is not sufficient (prevents IDOR).
- * - Session user → can only view their own data (returns session user_id)
- * - Admin session + ?userId= → can view any user's data
- */
-function resolveUserId(req: Request): string | null {
-  const sessionUserId = req.session.user_id;
-  if (!sessionUserId) return null;                          // Must be authenticated
-  return (req.query.userId as string) || sessionUserId;    // userId only honoured when logged in
-}
+import { resolveUserId } from '../utils/auth.utils';
 
 /**
  * GET /api/analytics/users-list

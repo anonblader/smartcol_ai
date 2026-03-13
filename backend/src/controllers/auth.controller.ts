@@ -11,13 +11,7 @@ import { db } from '../services/database.client';
 import { logger } from '../config/monitoring.config';
 import { config } from '../config/env';
 import { User, OAuthToken } from '../types';
-
-/**
- * Check if an email belongs to an admin user
- */
-function isAdmin(email: string): boolean {
-  return config.admin.emails.includes(email.toLowerCase());
-}
+import { isAdminEmail } from '../utils/auth.utils';
 
 // Extend Express Session type inline
 declare module 'express-session' {
@@ -236,7 +230,7 @@ export async function handleCallback(req: Request, res: Response): Promise<void>
 
     // Role-based redirect:
     // Admin → backend test pages | Normal user → frontend
-    if (isAdmin(user.email)) {
+    if (isAdminEmail(user.email)) {
       logger.info('Admin login — redirecting to backend', { email: user.email });
       res.redirect('/test-auth.html');
     } else {
@@ -305,7 +299,7 @@ export async function getAuthStatus(req: Request, res: Response): Promise<void> 
 
     res.json({
       authenticated: !isExpired,
-      isAdmin: isAdmin(user.email),
+      isAdmin: isAdminEmail(user.email),
       user: {
         id: user.id,
         email: user.email,

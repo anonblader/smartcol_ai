@@ -3,10 +3,7 @@
  */
 
 import { Request, Response } from 'express';
-
-function resolveUserId(req: Request): string | null {
-  return (req.query.userId as string) || req.session.user_id || null;
-}
+import { resolveUserId } from '../utils/auth.utils';
 import {
   detectRisks,
   getActiveAlerts,

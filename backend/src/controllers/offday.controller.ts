@@ -12,13 +12,9 @@ import {
   calculateOffDayBalance,
 } from '../services/offday.service';
 import { logger } from '../config/monitoring.config';
-import { config } from '../config/env';
 import { db } from '../services/database.client';
 import { User } from '../types';
-
-function isAdmin(email: string): boolean {
-  return config.admin.emails.includes(email.toLowerCase());
-}
+import { isAdminEmail } from '../utils/auth.utils';
 
 async function getSessionUser(req: Request) {
   const userId = req.session.user_id;
@@ -135,7 +131,7 @@ export async function getBalance(req: Request, res: Response): Promise<void> {
 export async function getTeam(req: Request, res: Response): Promise<void> {
   try {
     const sessionUser = await getSessionUser(req);
-    if (!sessionUser || !isAdmin(sessionUser.email)) {
+    if (!sessionUser || !isAdminEmail(sessionUser.email)) {
       res.status(403).json({ error: 'Forbidden', message: 'Admin access required' });
       return;
     }

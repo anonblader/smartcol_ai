@@ -22,6 +22,7 @@ from .ml_classifier import classify_ml, is_ready, ML_MODEL_VERSION
 # ── Rule-based engine (unchanged) ─────────────────────────────────────────────
 
 def _rule_based(request: ClassificationRequest) -> ClassificationResponse:
+    """Score each task type via keyword hits + structural heuristics, return the best match."""
     subject = normalize(request.subject)
     body    = normalize(request.body_preview)
     text    = f"{subject} {body}"
@@ -39,10 +40,8 @@ def _rule_based(request: ClassificationRequest) -> ClassificationResponse:
 
     # Structural heuristics
     if is_all_day and num_attendees == 0:
-        scores[10] += 15.0
-        scores[1]  += 10.0
-    if is_all_day and num_attendees == 0:
-        scores[1]  += 8.0
+        scores[10] += 15.0          # likely Out of Office
+        scores[1]  += 18.0          # or an all-day Deadline
     if num_attendees == 1:
         scores[5]  += 15.0
     if num_attendees >= 3:

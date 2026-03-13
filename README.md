@@ -43,7 +43,7 @@
 ### Phase 1 — Foundation
 
 - **Microsoft OAuth 2.0** authentication with CSRF-protected state parameter and session management
-- **PostgreSQL schema** — 17 tables covering users, OAuth tokens, calendar events, classifications, analytics, risks, off-day recommendations, ML predictions, notifications, sync history, and audit logs
+- **PostgreSQL schema** — 19 tables covering users, OAuth tokens, calendar events, classifications, analytics, risks, off-day recommendations, ML predictions, notifications, sync history, and audit logs
 - **Calendar sync** — real Microsoft Graph API (delta queries) + 3 mock workload profiles for demo:
   - **Balanced** — 8 events/week, healthy schedule, no risks triggered
   - **Overloaded** — 54 events across 3 weeks, 750 min/day (12.5h), triggers all 6 risks
@@ -228,7 +228,7 @@ Admin-configurable email notification system with 6 alert types, stored in the `
 #### Centralised Auth Middleware (`auth.middleware.ts`)
 
 - `requireAuth` — single function that checks `req.session.user_id` and returns `401 Unauthorized` if missing
-- Applied to all protected route groups in `app.ts`: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`, `/api/calendar`; admin routes (`/api/admin`, `/api/scheduler`, `/api/notifications`, `/api/test`) continue to use the existing `requireAdmin` guard which already includes the session check
+- Applied to all protected route groups in `app.ts`: `/api/sync`, `/api/analytics`, `/api/risks`, `/api/offday`, `/api/ml`, `/api/feedback`; admin routes (`/api/admin`, `/api/scheduler`, `/api/notifications`, `/api/test`) continue to use the existing `requireAdmin` guard which already includes the session check
 
 #### Events Page — Search & Filter
 
@@ -396,14 +396,16 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 
 ---
 
-### 9. Database — 15 Tables → 17 Tables
+### 9. Database — 15 Tables → 19 Tables
 
 **Original plan:** 15 tables specified in initial schema.
 
-**Additions in migration 002:**
+**Additions across migrations 002–004:**
 
 - `workload_predictions` — stores 5-day workload forecasts per user (from RandomForest model)
 - `burnout_scores` — stores daily burnout scores per user (from GradientBoosting model), with UPSERT on `(user_id, score_date)`
+- `email_alert_settings` — admin-configurable email alert toggles with trigger counts
+- `classification_feedback` — user corrections for active learning pattern matching
 
 ---
 
@@ -430,7 +432,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        CLIENT LAYER                              │
-│   React 18 + TypeScript + MUI v5 + Redux Toolkit + Recharts     │
+│   React 18 + TypeScript + MUI v5 + Recharts + Axios             │
 │   ┌──────────┐ ┌───────────┐ ┌────────┐ ┌──────────────────┐   │
 │   │Dashboard │ │ Analytics │ │ Risks  │ │ Settings         │   │
 │   │(tabbed   │ │(per-user  │ │(team + │ │(mock sync, jobs, │   │
@@ -457,7 +459,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
              │                          │ HTTP (internal)
 ┌────────────┴────────────┐  ┌──────────┴──────────────────────────┐
 │  PostgreSQL 15 (Docker)  │  │  AI/ML Service — FastAPI (port 8000) │
-│  17 tables               │  │  Python 3.11 + uvicorn               │
+│  19 tables               │  │  Python 3.11 + uvicorn               │
 │                          │  │                                      │
 │  users                   │  │  POST /classify                      │
 │  oauth_tokens            │  │    Hybrid: rule-based first          │
@@ -471,7 +473,7 @@ The overloaded profile was redesigned mid-project from 6 small events/day (99 to
 │  burnout_scores          │  │  POST /score/burnout                 │
 │  sync_history            │  │    GradientBoostingClassifier        │
 │  notifications           │  │    0-100 score, 5 levels             │
-│  + 5 more tables         │  │                                      │
+│  + 7 more tables         │  │                                      │
 └──────────────────────────┘  └──────────────────────────────────────┘
 ```
 
@@ -499,7 +501,7 @@ The original plan specified:
 | **AI Service** | Python 3.11+, FastAPI, uvicorn | As planned |
 | **NLI Model** | `facebook/bart-large-mnli` (Hugging Face) | spaCy removed — not needed with transformer-based NLI |
 | **ML Models** | scikit-learn (RandomForest, GradientBoosting), numpy | **Added** — not in original plan |
-| **Frontend** | React 18, TypeScript, MUI v5, Redux Toolkit, Recharts | As planned |
+| **Frontend** | React 18, TypeScript, MUI v5, Recharts, Axios | Redux Toolkit removed — hooks + local state used instead |
 | **Scheduler** | node-cron | **Changed** from Bull/Redis queue |
 | **Email** | nodemailer + Gmail SMTP (smtp.gmail.com:587) | As planned; SMTP configured and active |
 | **Auth** | Microsoft OAuth 2.0 (MSAL, delegated) | PKCE not implemented |
@@ -509,7 +511,7 @@ The original plan specified:
 
 ## Database Schema
 
-### Tables (17 total)
+### Tables (19 total)
 
 #### Migration 001 — Core Schema
 
@@ -779,7 +781,8 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 | `SECURITY_REPORT.md` | Full security audit — strengths, 5 vulnerabilities fixed, accepted risks, future recommendations |
 | `TEST_LOGS.md` | 51 test cases across all phases with actual terminal output |
 | `STARTUP_GUIDE.md` | Step-by-step local setup with environment variable reference |
+| `MICROSOFT_GRAPH_LIMITATIONS.md` | Known Microsoft Graph API limitations with personal accounts and workarounds |
 
 ---
 
-Last updated: March 12, 2026 | SmartCol AI Capstone Project
+Last updated: March 14, 2026 | SmartCol AI Capstone Project

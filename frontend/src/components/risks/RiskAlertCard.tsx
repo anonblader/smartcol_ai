@@ -1,13 +1,7 @@
 import React from 'react';
 import { Box, Paper, Typography, Chip, Button } from '@mui/material';
 import { RiskAlert } from '../../hooks/useRisks';
-
-const SEVERITY_COLORS: Record<string, string> = {
-  low: '#10b981',
-  medium: '#f59e0b',
-  high: '#ef4444',
-  critical: '#7c3aed',
-};
+import { SEVERITY_COLORS } from '../../utils/constants';
 
 interface RiskAlertCardProps {
   alert: RiskAlert;

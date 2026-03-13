@@ -18,11 +18,8 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
 import { Tabs, Tab } from '@mui/material';
-
-const PRIMARY = '#2563eb';
-const BREAKDOWN_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#06b6d4'];
-
-const minsToHrs = (m: number) => (Number(m) / 60).toFixed(1);
+import { PRIMARY, BREAKDOWN_COLORS } from '../utils/constants';
+import { mins2h } from '../utils/helpers';
 
 function getHeatColor(mins: number): string {
   const m = Number(mins);
@@ -135,12 +132,12 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
                     {daily.map((row: any, idx: number) => (
                       <TableRow key={idx} hover>
                         <TableCell>{fmtDate(row.date)}</TableCell>
-                        <TableCell align="right">{minsToHrs(row.total_minutes)}</TableCell>
-                        <TableCell align="right">{minsToHrs(row.work_minutes)}</TableCell>
-                        <TableCell align="right">{minsToHrs(row.meeting_minutes)}</TableCell>
-                        <TableCell align="right">{minsToHrs(row.focus_minutes)}</TableCell>
+                        <TableCell align="right">{mins2h(row.total_minutes)}</TableCell>
+                        <TableCell align="right">{mins2h(row.work_minutes)}</TableCell>
+                        <TableCell align="right">{mins2h(row.meeting_minutes)}</TableCell>
+                        <TableCell align="right">{mins2h(row.focus_minutes)}</TableCell>
                         <TableCell align="right" sx={{ color: Number(row.overtime_minutes) > 0 ? '#ef4444' : 'inherit' }}>
-                          {minsToHrs(row.overtime_minutes)}
+                          {mins2h(row.overtime_minutes)}
                         </TableCell>
                         <TableCell align="center">
                           <Chip label={row.has_high_workload ? 'High Load' : 'Normal'} size="small"
@@ -178,10 +175,10 @@ function AnalyticsContent({ userId, userName }: { userId?: string; userName?: st
                         <TableCell>
                           {row.week_start_date ? (() => { try { return format(parseISO(row.week_start_date), 'MMM d, yyyy'); } catch { return row.week_start_date; } })() : `Week ${idx + 1}`}
                         </TableCell>
-                        <TableCell align="right">{minsToHrs(row.total_minutes)}</TableCell>
-                        <TableCell align="right">{minsToHrs(row.work_minutes)}</TableCell>
+                        <TableCell align="right">{mins2h(row.total_minutes)}</TableCell>
+                        <TableCell align="right">{mins2h(row.work_minutes)}</TableCell>
                         <TableCell align="right" sx={{ color: Number(row.overtime_minutes) > 0 ? '#ef4444' : 'inherit' }}>
-                          {minsToHrs(row.overtime_minutes)}
+                          {mins2h(row.overtime_minutes)}
                         </TableCell>
                         <TableCell align="right">{row.total_events ?? 0}</TableCell>
                         <TableCell align="right">{row.meeting_count ?? 0}</TableCell>

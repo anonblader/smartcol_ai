@@ -16,14 +16,17 @@ export interface WorkloadComputeResult {
   error?: string;
 }
 
-// Task type IDs that count as "work" time
+// Task type IDs (matching task_types table seeded in migration 001):
+//   1=Deadline, 2=Ad-hoc Troubleshooting, 3=Project Milestone,
+//   4=Routine Meeting, 5=1:1 Check-in, 6=Admin/Operational,
+//   7=Training/Learning, 8=Focus Time, 9=Break/Personal, 10=Out of Office
 const WORK_TASK_TYPE_IDS = [1, 2, 3, 4, 5, 6, 7, 8]; // excludes Break/Personal(9) and Out of Office(10)
-const MEETING_TASK_TYPE_IDS = [4, 5]; // Routine Meeting, 1:1 Check-in
-const FOCUS_TASK_TYPE_IDS = [8];      // Focus Time
-const BREAK_TASK_TYPE_IDS = [9, 10];  // Break/Personal, Out of Office
+const MEETING_TASK_TYPE_IDS = [4, 5];  // Routine Meeting, 1:1 Check-in
+const FOCUS_TASK_TYPE_IDS = [8];       // Focus Time
+const BREAK_TASK_TYPE_IDS = [9, 10];   // Break/Personal, Out of Office
 const DEADLINE_TASK_TYPE_IDS = [1, 3]; // Deadline, Project Milestone
 
-const STANDARD_MINUTES_PER_DAY = 8 * 60; // 480 min (8-hour day)
+const STANDARD_MINUTES_PER_DAY = 8 * 60; // 480 min — overtime = anything above this
 
 /**
  * Compute and store workload metrics for a user.

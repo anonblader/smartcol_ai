@@ -8,11 +8,7 @@ import EmailIcon from '@mui/icons-material/Email';
 import { useRisks, RiskAlert } from '../hooks/useRisks';
 import { useTeamRisks, TeamRisk } from '../hooks/useAdmin';
 import { useAuth } from '../hooks/useAuth';
-
-const PRIMARY = '#2563eb';
-const SEVERITY_COLORS: Record<string, string> = {
-  low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#7c3aed',
-};
+import { PRIMARY, SEVERITY_COLORS } from '../utils/constants';
 const SEV_ICON: Record<string, string> = {
   low: '🟢', medium: '🟡', high: '🟠', critical: '🔴',
 };

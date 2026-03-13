@@ -55,7 +55,7 @@ npm run db:migrate:init
 ```
 ✅ Connected successfully
 ✅ Migration completed in 234ms
-✅ Created 18 tables
+✅ Created 19 tables
 ✅ Created 25 indexes
 ✅ Created 2 views
 🎉 Migration completed successfully!
@@ -202,10 +202,13 @@ After running the migration, verify everything is set up correctly:
 psql smartcol -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;"
 ```
 
-**Expected tables (18 total):**
+**Expected tables (19 total):**
 - audit_logs
+- burnout_scores
 - calendar_events
+- classification_feedback
 - daily_workload
+- email_alert_settings
 - event_classifications
 - notification_preferences
 - notifications
@@ -218,6 +221,7 @@ psql smartcol -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDE
 - task_types
 - users
 - weekly_workload
+- workload_predictions
 
 ### 2. Check Predefined Data
 
