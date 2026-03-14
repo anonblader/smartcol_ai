@@ -781,7 +781,7 @@ See **STARTUP_GUIDE.md** for full environment variable reference and step-by-ste
 | `SECURITY_REPORT.md` | Full security audit — strengths, 5 vulnerabilities fixed, accepted risks, future recommendations |
 | `TEST_LOGS.md` | 51 test cases across all phases with actual terminal output |
 | `STARTUP_GUIDE.md` | Step-by-step local setup with environment variable reference |
-| `MICROSOFT_GRAPH_LIMITATIONS.md` | Known Microsoft Graph API limitations with personal accounts and workarounds |
+| `LIMITATIONS.md` | All known limitations, accepted trade-offs, and production remediation paths |
 
 ---
 

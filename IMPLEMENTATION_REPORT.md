@@ -1603,7 +1603,7 @@ Implements full calendar synchronisation from Microsoft Graph API with delta que
 
 Due to Microsoft tenant restrictions on the university and personal accounts used for testing, the `/me/events/delta` endpoint returns 401 even with correct scopes. This is a documented enterprise policy restriction, not a code defect.
 
-Full documentation in `MICROSOFT_GRAPH_LIMITATIONS.md`.
+Full documentation in `LIMITATIONS.md` (Section 1 — Microsoft Graph API).
 
 **Evidence that the code is correct:**
 - `GET /me` (user profile) works — token is valid
@@ -2190,7 +2190,7 @@ ADMIN_EMAILS="user#EXT#@tenant.onmicrosoft.com"
 - Complete backend test pages with cross-user analytics
 
 ### 🔄 Known Limitations (Documented)
-- Microsoft Graph `/me/events/delta` returns 401 on university/personal accounts due to tenant policy — mock sync provided as workaround (see `MICROSOFT_GRAPH_LIMITATIONS.md`)
+- Microsoft Graph `/me/events/delta` returns 401 on university/personal accounts due to tenant policy — mock sync provided as workaround (see `LIMITATIONS.md`)
 - Token encryption uses Base64 placeholder — AES-256-GCM + Azure Key Vault for production
 - Email requires Gmail App Password or SMTP credentials — console-log mode available for demo
 
