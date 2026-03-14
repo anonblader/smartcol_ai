@@ -24,11 +24,19 @@ Verify: `http://localhost:3001/health` → `{"status":"ok"}`
 ### Classification Service (Python FastAPI) — Port 8000
 ```bash
 cd /path/to/smartcol_ai/classification-service
-venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+source venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-Verify: `http://localhost:8000/health` → `{"status":"ok"}`
+Verify: `http://localhost:8000/health` → `{"status":"ok","ml_model":{"ready":true},"mode":"hybrid (ml + rule-based)"}`
 
-> **Both services must be running** before testing. The full pipeline (sync → classify → workload → risks) requires both.
+### Frontend (React) — Port 3000
+```bash
+cd /path/to/smartcol_ai/frontend
+npm start
+```
+Verify: `http://localhost:3000` → React app loads in the browser
+
+> **All three services must be running** before testing. The full pipeline (sync → classify → workload → risks → ML predictions) requires the backend and classification service. The frontend requires the backend as its API proxy.
 
 ---
 
@@ -264,30 +272,224 @@ DELETE FROM weekly_workload WHERE user_id = (SELECT id FROM users WHERE email = 
 
 ---
 
-## 9. Full Pipeline Reference
+## 9. Off-Day Recommendations
+
+The off-day engine analyses workload patterns and recommends optimal rest days.
+
+### Entitlement Rules
+
+| Trigger | Earned Days |
+|---|---|
+| Weekday with ≥ 12 hours of work | +1 |
+| Any weekend day with work time > 0 | +1 |
+
+**Balance** = earned − accepted. Recommendations are capped to available balance.
+
+### Endpoints (all require auth)
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/offday/generate` | Generate recommendations (query: `?userId=` for admin) |
+| GET | `/api/offday/balance` | Entitlement balance (earned, used, available) |
+| GET | `/api/offday/pending` | Pending recommendations only |
+| GET | `/api/offday/all` | All recommendations (any status) |
+| GET | `/api/offday/team` | Admin: all users' pending recommendations |
+| POST | `/api/offday/:id/accept` | Accept a recommendation |
+| POST | `/api/offday/:id/reject` | Decline a recommendation |
+
+### How to Test
+
+1. Go to **Settings** in the frontend → load **"Overloaded"** mock data (generates Saturday work + high daily hours to trigger entitlements)
+2. Navigate to **Analytics** → scroll to Off-Day Recommendations section
+3. Click **"Generate"** to analyse the next 30 days
+4. Recommendations appear with priority scores (0–100)
+5. Click **Accept** or **Decline** for each
+6. Balance banner shows earned vs available off-days (green = healthy, amber = low)
+7. **Admin view:** select a team member from the dropdown → their recommendations appear in a tabbed view
+
+---
+
+## 10. ML Workload Prediction and Burnout Scoring
+
+Two machine-learning models run inside the classification service (port 8000) and are proxied through the backend.
+
+### Classification Service Endpoints
+
+| Method | Endpoint | Model | Output |
+|---|---|---|---|
+| POST | `/predict/workload` | RandomForestRegressor | 5-day forecast with confidence bands |
+| POST | `/score/burnout` | GradientBoostingClassifier | 0–100 score, 5 levels |
+
+Both models are trained on synthetic data at service startup — no external dataset is required.
+
+### Backend Proxy Endpoints (all require auth)
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/ml/predict` | Run both models for the session user |
+| GET | `/api/ml/workload-forecast` | Get 5-day forecast (auto-generates if missing) |
+| GET | `/api/ml/burnout-score` | Get latest burnout score (auto-generates if missing) |
+
+### Burnout Levels
+
+| Score Range | Level |
+|---|---|
+| 0–20 | Low |
+| 21–40 | Moderate |
+| 41–60 | At Risk |
+| 61–80 | High |
+| 81–100 | Critical |
+
+### How to Test
+
+1. In the frontend **Dashboard**, the **Workload Forecast** card shows a 5-day bar chart with confidence bands
+2. The **Burnout Score** card shows a circular progress indicator (0–100) with a colour-coded level
+3. Both auto-generate on first fetch if no data exists
+4. Updated automatically by the background analytics pipeline (every 30 minutes)
+5. Direct API test (classification service):
+   ```bash
+   curl -X POST http://localhost:8000/predict/workload \
+     -H "Content-Type: application/json" \
+     -d '{"historical_daily":[
+       {"date":"2026-03-10","work_minutes":480,"meeting_minutes":120,"focus_minutes":180,"deadline_count":1},
+       {"date":"2026-03-11","work_minutes":500,"meeting_minutes":100,"focus_minutes":200,"deadline_count":2},
+       {"date":"2026-03-12","work_minutes":420,"meeting_minutes":90,"focus_minutes":150,"deadline_count":0}
+     ]}'
+   ```
+
+---
+
+## 11. Analytics Export
+
+Export workload analytics as CSV or PDF.
+
+### Endpoint
+
+```
+GET /api/analytics/export?format=csv|pdf&userId=<optional>
+```
+
+| Parameter | Required | Description |
+|---|---|---|
+| `format` | Yes | `csv` or `pdf` |
+| `userId` | No | Admin-only — export a specific user's report; omit for own data |
+
+### Report Contents
+
+| Section | CSV | PDF |
+|---|---|---|
+| Daily Workload (last 30 days) | Yes | Yes |
+| Weekly Summary (last 8 weeks) | Yes | Yes |
+| Time Breakdown by Task Type | Yes | Yes |
+| Team Workload Overview (admin, no userId) | Yes | Yes |
+| Manager Recommendations (admin, no userId) | Yes | Yes |
+
+### How to Test
+
+1. In the frontend **Analytics** page, export buttons appear in the top-right corner
+2. **Personal user:** buttons read "CSV — My Report" / "PDF — My Report"
+3. **Admin (no user selected):** buttons read "CSV — Team Report" / "PDF — Team Report"
+4. **Admin (user selected from dropdown):** buttons read "CSV — [Name]" / "PDF — [Name]"
+5. Downloaded filenames include a timestamp, e.g. `smartcol-Team-Report-2026-03-14_14-30-45.csv`
+
+---
+
+## 12. Background Scheduler (Admin Only)
+
+Three cron jobs run in the background, registered at server startup.
+
+### Scheduled Jobs
+
+| Job | Schedule | What It Does |
+|---|---|---|
+| Analytics Pipeline | Every 30 minutes | Classify → Compute workload → Detect risks → ML predictions (all users with events) |
+| Calendar Sync | Every 2 hours | Microsoft Graph sync for users with valid tokens, then full pipeline |
+| Weekly Digest | Mondays at 8 AM | Weekly summary email |
+
+### Admin Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/scheduler/status` | Status of all jobs (last run, next run, duration, errors) |
+| POST | `/api/scheduler/trigger` | Run a job immediately — body: `{"jobKey":"analyticsPipeline"}` |
+| POST | `/api/scheduler/toggle` | Pause/resume a job — body: `{"jobKey":"analyticsPipeline","enabled":false}` |
+
+### How to Test
+
+1. In the frontend **Settings** page (admin only), scroll to the **"Background Jobs"** card
+2. Each job shows: last run time, duration, users processed, next estimated run, status badge
+3. Click **"Run Now"** to trigger a job immediately (button disables while running)
+4. Click **"Pause"** / **"Resume"** to toggle the schedule on or off
+5. Status auto-refreshes every 15 seconds; click **"Refresh"** for immediate update
+
+---
+
+## 13. Frontend React Application
+
+The frontend is a React + Material UI application that provides role-based views.
+
+### Pages
+
+| Route | Page | Description |
+|---|---|---|
+| `/` | Dashboard | Work summary, upcoming events, ML forecast + burnout cards |
+| `/analytics` | Analytics | Daily/weekly tables, time breakdown, heatmap, off-day recs, export |
+| `/risks` | Risks | Active/ongoing/history risk alerts with acknowledge/dismiss |
+| `/events` | Events | Calendar events with keyword search + task type filter |
+| `/settings` | Settings | Mock sync options, email alerts, background jobs (admin) |
+
+### Role-Based Views
+
+| Feature | Normal User | Admin |
+|---|---|---|
+| Dashboard | Personal stats only | Team member cards with load levels + risk counts |
+| Analytics | Own data | User selector dropdown to view any team member |
+| Risks | Own alerts | All team risks + "Acknowledge & Notify" (sends email) |
+| Off-Day Recs | Own balance + recs | Tabbed per-member view |
+| Settings | Mock sync (balanced / overloaded / underloaded) | + Email alerts, background jobs |
+| Sidebar | Standard links | + Links to 4 backend test pages |
+
+### Events Page — Search and Filter
+
+1. Navigate to `/events` in the frontend
+2. Use the **keyword search** box to filter events by title or description
+3. Use the **task type dropdown** to filter by classification type
+4. Counter shows **filtered / total** events
+5. Filtering is client-side and instant
+
+---
+
+## 14. Full Pipeline Reference
 
 Every Mock Sync triggers the full pipeline automatically:
 
 ```
 Mock Sync
-  └─► Classify Events       (Python AI service → event_classifications)
-        └─► Compute Workload (daily_workload + weekly_workload)
-              └─► Detect Risks (risk_alerts)
+  └─► Classify Events           (Python AI service → event_classifications)
+        └─► Compute Workload    (daily_workload + weekly_workload)
+              └─► Detect Risks  (risk_alerts)
+                    └─► ML Predictions  (workload_predictions + burnout_scores)
 ```
 
 You can also trigger each step manually from `test-analytics.html`:
 - **⚙️ Compute Workload** — recomputes from existing classifications
 - **⚠️ Run Risk Detection** — re-runs detection (useful after acknowledging alerts and making calendar changes)
 
+The **background scheduler** runs this pipeline automatically every 30 minutes for all users with events.
+
 ---
 
-## 10. Demonstration Checklist
+## 15. Demonstration Checklist
 
 Use this checklist when presenting SmartCol AI:
 
-- [ ] Both services running (`/health` checks pass)
+### Setup
+- [ ] All 3 services running — backend (`/health`), classifier (`/health`), frontend (port 3000)
+- [ ] PostgreSQL accepting connections (19 tables present)
+
+### Backend Test Pages
 - [ ] Log in via `test-auth.html` — show OAuth redirect and user info display
-- [ ] Run **Mock Sync** on `test-sync.html` — show pipeline response (sync + classify + workload + risks)
+- [ ] Run **Mock Sync** on `test-sync.html` — show pipeline response (sync + classify + workload + risks + ML)
 - [ ] Show **Get Events** — 8 classified events listed
 - [ ] Open `test-analytics.html`:
   - [ ] Dashboard — current week stats + upcoming events
@@ -302,8 +504,24 @@ Use this checklist when presenting SmartCol AI:
   - [ ] Click Seed — all 4 users processed
   - [ ] Show Alex (no risks) vs Morgan (5 risks) side by side
   - [ ] Point out per-user name, email, profile badge, stats, and risk pills
-  - [ ] Explain the lifecycle: detect → acknowledge → auto-resolve
+
+### Frontend React App
+- [ ] Dashboard — personal stats or team overview (admin)
+- [ ] ML cards — Workload Forecast (5-day bar chart) + Burnout Score (circular gauge)
+- [ ] Analytics — daily/weekly tables, time breakdown, heatmap
+- [ ] Off-Day Recommendations — generate, accept/decline, balance banner
+- [ ] Export — download CSV and PDF reports (personal or team)
+- [ ] Risks — active/ongoing/history tabs, acknowledge + dismiss
+- [ ] Events — search by keyword, filter by task type
+- [ ] Settings — load balanced/overloaded/underloaded mock data
+- [ ] Settings (admin) — background jobs status, Run Now, Pause/Resume
+
+### Key Lifecycle to Explain
+- [ ] Risk lifecycle: detect → acknowledge → auto-resolve (or dismiss)
+- [ ] Off-day entitlement: overtime/weekend work → earned days → recommendations → accept/decline
+- [ ] Full pipeline: sync → classify → workload → risks → ML predictions
+- [ ] Background scheduler: auto-runs pipeline every 30 minutes
 
 ---
 
-*Last updated: March 2026 | SmartCol AI Capstone Project*
+*Last updated: March 14, 2026 | SmartCol AI Capstone Project*
