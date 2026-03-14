@@ -250,6 +250,7 @@ Legacy HTML test pages for direct API testing (no React required):
 | Auth Test | `http://localhost:3001/test-auth.html` |
 | Sync Test | `http://localhost:3001/test-sync.html` |
 | Analytics Panel | `http://localhost:3001/test-analytics.html` |
+| Multi-User Test | `http://localhost:3001/test-multiuser.html` |
 
 ---
 
@@ -305,4 +306,4 @@ Expected — this job requires an organisational Microsoft 365 account with admi
 
 ---
 
-*SmartCol AI Capstone Project — March 2026*
+*SmartCol AI Capstone Project — Last updated: March 14, 2026*
