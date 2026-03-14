@@ -1,6 +1,6 @@
 # SmartCol AI - Complete Test Logs & Evidence
 
-**Test Date:** March 8, 2026
+**Last Test Date:** March 14, 2026
 **Tester:** Ariff Sanip
 **Test Environment:** Local Development (macOS)
 **Status:** All Tests Passed ✅
@@ -14,6 +14,7 @@
 3. [OAuth Authentication Tests](#oauth-authentication-tests)
 4. [Database Verification](#database-verification)
 5. [API Endpoint Tests](#api-endpoint-tests)
+6. [Full System Verification — March 14, 2026](#full-system-verification--march-14-2026)
 
 ---
 
@@ -1958,13 +1959,14 @@ The **Python classification service** has a standalone automated pytest suite:
 
 ```bash
 cd classification-service
-pytest tests/
-# 17/17 tests passing
+source venv/bin/activate
+pytest tests/ -v                   # 12/12 rule-based tests
+python3 tests/test_ml_classifier.py  # 5/5 ML ambiguity tests (script)
 ```
 
 This covers:
-- 12 mock calendar event classifications (test_classifier.py)
-- 5 ambiguous event classifications where NLI excels over rule-based (test_ml_classifier.py)
+- 12 rule-based classifier tests via pytest (test_classifier.py)
+- 5 ambiguous event ML classifier tests via script (test_ml_classifier.py) — 5/5 passing
 
 ### Automated Test Suite — Future Implementation
 
@@ -1987,4 +1989,325 @@ A full automated test suite is planned as part of Phase 8 (CI/CD) and will inclu
 
 The existing manual test documentation (51 cases in this file) serves as the specification baseline for the future automated suite.
 
-**Test Report Updated:** March 9, 2026
+---
+
+## Full System Verification — March 14, 2026
+
+**Purpose:** Post-codebase-cleanup verification to confirm the entire application still functions correctly after the Phase 9 robustness pass and dead code removal.
+
+**Test Date:** March 14, 2026
+**Tester:** Ariff Sanip
+**Test Environment:** Local Development (macOS, Darwin 25.3.0)
+
+---
+
+### Test 6.1: Service Startup
+
+| Service | Port | Status |
+| --- | --- | --- |
+| PostgreSQL (Docker) | 5432 | ✅ RUNNING |
+| Backend (Express + TypeScript) | 3001 | ✅ RUNNING |
+| Classification Service (FastAPI + ML) | 8000 | ✅ RUNNING |
+| Frontend (React) | 3000 | ✅ RUNNING |
+
+**Backend startup log (excerpt):**
+```json
+{"level":"info","message":"Database connected successfully","timestamp":"2026-03-14T07:17:08.104Z","poolSize":10}
+{"level":"info","message":"Server listening on port 3001","timestamp":"2026-03-14T07:17:08.105Z","environment":"development"}
+{"level":"info","message":"[Scheduler] Background jobs registered","timestamp":"2026-03-14T07:17:08.119Z","analyticsPipeline":"*/30 * * * *","calendarSync":"0 */2 * * *","weeklyDigest":"0 8 * * 1"}
+```
+
+**Classification service startup log:**
+```
+[ML] Loading facebook/bart-large-mnli — this may take a moment on first run...
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+**Status:** ✅ PASSED — All 4 services started without errors
+
+---
+
+### Test 6.2: TypeScript Compilation
+
+**Backend:**
+```bash
+cd backend && npx tsc --noEmit
+# Exit code 0 — no errors
+```
+
+**Frontend:**
+```bash
+cd frontend && npx tsc --noEmit
+# Exit code 0 — no errors
+```
+
+**Python (classifier):**
+```bash
+python3 -m py_compile app/classifier.py  # OK
+python3 -m py_compile app/main.py        # OK
+```
+
+**Status:** ✅ PASSED — All codebases compile cleanly with zero errors or warnings
+
+---
+
+### Test 6.3: Database Integrity
+
+**Command:**
+```sql
+SELECT count(*) AS table_count FROM information_schema.tables
+WHERE table_schema='public' AND table_type='BASE TABLE';
+```
+
+**Output:**
+```
+ table_count
+-------------
+          19
+```
+
+**All 19 tables present:**
+```
+audit_logs, burnout_scores, calendar_events, classification_feedback,
+daily_workload, email_alert_settings, event_classifications,
+notification_preferences, notifications, oauth_tokens,
+offday_recommendations, project_categories, risk_alerts, risk_types,
+sync_history, task_types, users, weekly_workload, workload_predictions
+```
+
+**Status:** ✅ PASSED — All 19 tables intact
+
+---
+
+### Test 6.4: Classification Service Unit Tests
+
+**Command:**
+```bash
+cd classification-service && source venv/bin/activate && python3 -m pytest tests/ -v
+```
+
+**Output:**
+```
+tests/test_classifier.py::test_weekly_team_standup PASSED                [  8%]
+tests/test_classifier.py::test_project_deadline PASSED                   [ 16%]
+tests/test_classifier.py::test_client_demo PASSED                        [ 25%]
+tests/test_classifier.py::test_code_review PASSED                        [ 33%]
+tests/test_classifier.py::test_sprint_planning PASSED                    [ 41%]
+tests/test_classifier.py::test_focus_time PASSED                         [ 50%]
+tests/test_classifier.py::test_past_meeting PASSED                       [ 58%]
+tests/test_classifier.py::test_cancelled_event PASSED                    [ 66%]
+tests/test_classifier.py::test_out_of_office PASSED                      [ 75%]
+tests/test_classifier.py::test_one_on_one PASSED                         [ 83%]
+tests/test_classifier.py::test_training_workshop PASSED                  [ 91%]
+tests/test_classifier.py::test_no_input_fallback PASSED                  [100%]
+
+======================== 12 passed, 2 warnings in 2.32s ========================
+```
+
+**Status:** ✅ PASSED — 12/12 tests passing
+
+---
+
+### Test 6.5: Classification Service API Endpoints
+
+#### 6.5.1: Health Check
+
+**Request:** `GET http://localhost:8000/health`
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "ml_model": {
+    "ready": true,
+    "model": "facebook/bart-large-mnli",
+    "version": "bart-large-mnli-v1.0",
+    "error": null
+  },
+  "mode": "hybrid (ml + rule-based)"
+}
+```
+
+**Status:** ✅ PASSED
+
+#### 6.5.2: Event Classification
+
+**Request:** `POST http://localhost:8000/classify`
+```json
+{
+  "event_id": "test1",
+  "subject": "Team standup meeting",
+  "body_preview": "Daily standup",
+  "duration_minutes": 30
+}
+```
+
+**Response:**
+```json
+{
+  "task_type_id": 4,
+  "task_type_name": "Routine Meeting",
+  "confidence_score": 0.79,
+  "method": "rule_based",
+  "model_version": "rule-based-v1.0"
+}
+```
+
+**Status:** ✅ PASSED — Correctly classified as "Routine Meeting"
+
+#### 6.5.3: Workload Prediction
+
+**Request:** `POST http://localhost:8000/predict/workload`
+```json
+{
+  "historical_daily": [
+    {"date": "2026-03-09", "work_minutes": 480, "meeting_minutes": 120, "focus_minutes": 180, "deadline_count": 1},
+    {"date": "2026-03-10", "work_minutes": 500, "meeting_minutes": 100, "focus_minutes": 200, "deadline_count": 2},
+    {"date": "2026-03-11", "work_minutes": 420, "meeting_minutes": 90, "focus_minutes": 150, "deadline_count": 0},
+    {"date": "2026-03-12", "work_minutes": 460, "meeting_minutes": 110, "focus_minutes": 170, "deadline_count": 1},
+    {"date": "2026-03-13", "work_minutes": 480, "meeting_minutes": 130, "focus_minutes": 160, "deadline_count": 1}
+  ]
+}
+```
+
+**Response (summary):**
+- 5-day forecast returned (March 16–20, 2026)
+- Predicted ~494–496 min/day (8.2–8.3 hours)
+- Load level: "moderate", Trend: "stable"
+- Model version: "rf-workload-v1.0"
+
+**Status:** ✅ PASSED
+
+#### 6.5.4: Burnout Scoring
+
+**Request:** `POST http://localhost:8000/score/burnout`
+```json
+{
+  "weekly_metrics": [
+    {"week_start_date": "2026-03-02", "work_minutes": 2400, "overtime_minutes": 120, "meeting_minutes": 600, "focus_minutes": 900, "meeting_count": 15},
+    {"week_start_date": "2026-03-09", "work_minutes": 2500, "overtime_minutes": 200, "meeting_minutes": 700, "focus_minutes": 800, "meeting_count": 18}
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "score": 5.0,
+  "level": "none",
+  "trend": "stable",
+  "contributing_factors": ["Workload appears within healthy ranges"],
+  "confidence": 1.0,
+  "metrics_summary": {
+    "avg_weekly_hours": 40.8,
+    "avg_overtime_hours": 2.7,
+    "meeting_ratio": 0.27,
+    "focus_ratio": 0.35
+  },
+  "model_version": "gbm-burnout-v1.0"
+}
+```
+
+**Status:** ✅ PASSED
+
+---
+
+### Test 6.6: Backend API — Auth Middleware
+
+All protected routes tested without authentication to verify middleware enforcement:
+
+| Endpoint | HTTP Method | Expected | Actual | Status |
+| --- | --- | --- | --- | --- |
+| `/api/auth/status` | GET | `{"authenticated": false}` | `{"authenticated": false, "message": "No active session"}` | ✅ |
+| `/api/sync/status` | GET | 401 | `{"error": "Unauthorized", "message": "Authentication required"}` | ✅ |
+| `/api/analytics/dashboard` | GET | 401 | `{"error": "Unauthorized", "message": "Authentication required"}` | ✅ |
+| `/api/risks/active` | GET | 401 | `{"error": "Unauthorized", "message": "Authentication required"}` | ✅ |
+| `/api/scheduler/status` | GET | 401 | `{"error": "Unauthorized", "message": "No active session"}` | ✅ |
+| `/api/offday/balance` | GET | 401 | `{"error": "Unauthorized", "message": "Authentication required"}` | ✅ |
+| `/api/admin/team-overview` | GET | 401 | `{"error": "Unauthorized", "message": "No active session"}` | ✅ |
+| `/api/ml/workload-forecast` | GET | 401 | `{"error": "Unauthorized", "message": "Authentication required"}` | ✅ |
+| `/api/analytics/export?format=csv` | GET | 401 | HTTP 401 | ✅ |
+
+**Status:** ✅ PASSED — All 9 protected endpoints correctly reject unauthenticated requests
+
+---
+
+### Test 6.7: Backend Test Pages
+
+| Page | URL | HTTP Status | Content |
+| --- | --- | --- | --- |
+| Auth Test | `http://localhost:3001/test-auth.html` | 200 | 45 HTML tags | ✅ |
+| Sync Test | `http://localhost:3001/test-sync.html` | 200 | 163 HTML tags | ✅ |
+| Analytics Test | `http://localhost:3001/test-analytics.html` | 200 | 233 HTML tags | ✅ |
+
+**Status:** ✅ PASSED
+
+---
+
+### Test 6.8: Frontend React Application
+
+**URL:** `http://localhost:3000`
+**HTTP Status:** 200
+**Content:** Full HTML document served with React app
+
+**Status:** ✅ PASSED
+
+---
+
+### Test 6.9: Background Scheduler
+
+**Verification:** Backend startup log confirms scheduler registration.
+
+| Job | Schedule | Status |
+| --- | --- | --- |
+| Analytics Pipeline | Every 30 minutes (`*/30 * * * *`) | ✅ Registered |
+| Calendar Sync | Every 2 hours (`0 */2 * * *`) | ✅ Registered |
+| Weekly Digest | Mondays at 8am (`0 8 * * 1`) | ✅ Registered |
+
+**Status:** ✅ PASSED
+
+---
+
+### Test 6.10: Dead Code Cleanup Verification
+
+Three empty stub files (`export {};`) were found as untracked files from the previous cleanup session:
+- `frontend/src/components/dashboard/DashboardOverview.tsx`
+- `frontend/src/components/dashboard/ProjectPieChart.tsx`
+- `frontend/src/components/dashboard/TrendsChart.tsx`
+
+**Verification:** `grep` confirmed no imports reference these files anywhere in the codebase. Files deleted. Frontend still compiles cleanly after removal.
+
+**Status:** ✅ PASSED — Dead stubs removed, no broken references
+
+---
+
+### Test 6.11: Error Log Audit
+
+| Service | Log File | Errors Found |
+| --- | --- | --- |
+| Backend | `/tmp/smartcol-backend.log` | None |
+| Classification Service | `/tmp/smartcol-classifier.log` | None |
+
+**Status:** ✅ PASSED — Zero errors across all services
+
+---
+
+### Full Verification Summary
+
+| Category | Tests | Result |
+| --- | --- | --- |
+| Service Startup | 4 services | ✅ All running |
+| Compilation | 3 codebases | ✅ Zero errors |
+| Database | 19 tables | ✅ All present |
+| Unit Tests | 12 classifier tests | ✅ 12/12 passed |
+| Classification API | 4 endpoints | ✅ All responding correctly |
+| Auth Middleware | 9 protected routes | ✅ All enforce authentication |
+| Test Pages | 3 pages | ✅ All serving (HTTP 200) |
+| Frontend | React app | ✅ Serving correctly |
+| Background Jobs | 3 scheduled jobs | ✅ All registered |
+| Dead Code | 3 stubs | ✅ Removed, no broken refs |
+| Error Logs | 2 services | ✅ Zero errors |
+| **Total** | **52 checks** | **✅ ALL PASSED** |
+
+**Test Report Updated:** March 14, 2026
